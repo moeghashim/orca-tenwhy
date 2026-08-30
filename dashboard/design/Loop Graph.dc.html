@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#f4f4f5}
+  a{color:#2563eb;text-decoration:none}a:hover{color:#1d4ed8;text-decoration:underline}
+  @keyframes lgPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes lgSkel{0%,100%{opacity:.5}50%{opacity:1}}
+  ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#d4d4d8;border-radius:5px;border:2px solid #f4f4f5}::-webkit-scrollbar-track{background:transparent}
+</style>
+</helmet>
+<div style="width:1440px;height:900px;display:flex;background:#f4f4f5;color:#18181b;font-family:Geist,system-ui,sans-serif;font-size:13px;overflow:hidden" data-screen-label="Loop Graph">
+  <!-- sidebar -->
+  <div style="width:220px;flex:none;display:flex;flex-direction:column;border-right:1px solid #1a1a1e;background:#ffffff">
+    <div style="padding:20px 16px 16px;display:flex;flex-direction:column;gap:2px">
+      <div style="font-family:'Geist Mono',monospace;font-size:13px;font-weight:500;letter-spacing:.02em">tenwhy<span style="color:#71717a"> /</span> loop graph</div>
+      <div style="font-size:11px;color:#71717a">operations console</div>
+    </div>
+    <div style="margin:0 16px 16px;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #1a1a1e;border-radius:6px;background:#fafafa">
+      <span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ conn.dot }};animation:{{ conn.anim }}"></span>
+      <div style="display:flex;flex-direction:column;min-width:0">
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ conn.fg }}">{{ conn.label }}</span>
+        <span style="font-size:10.5px;color:#71717a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ conn.sub }}</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+      <sc-for list="{{ navItems }}" as="nv" hint-placeholder-count="3">
+        <div onClick="{{ nv.go }}" style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;background:{{ nv.bg }};color:{{ nv.fg }}" style-hover="background:#f4f4f5">
+          <span style="font-family:'Geist Mono',monospace;font-size:12px;width:14px;text-align:center;color:{{ nv.glyphFg }}">{{ nv.glyph }}</span>
+          <span style="font-size:13px;font-weight:500;flex:1">{{ nv.label }}</span>
+          <sc-if value="{{ nv.showCount }}" hint-placeholder-val="{{ false }}">
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;padding:1px 7px;border-radius:99px;background:{{ nv.countBg }};color:{{ nv.countFg }};border:1px solid {{ nv.countBorder }}">{{ nv.count }}</span>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <div style="flex:1"></div>
+    <div style="padding:14px 16px;border-top:1px solid #1a1a1e;display:flex;flex-direction:column;gap:4px">
+      <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a">read-only console</div>
+      <div style="font-size:10.5px;color:#a1a1aa;line-height:1.5">Loops act autonomously. This surface observes; it never writes.</div>
+      <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#a1a1aa;margin-top:4px">snapshot {{ snapshotAt }} · v0.4.1</div>
+    </div>
+  </div>
+  <!-- main -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+    <sc-if value="{{ showDiscBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;display:flex;align-items:center;gap:10px;padding:9px 24px;background:rgba(220,38,38,0.08);border-bottom:1px solid rgba(220,38,38,0.25);font-size:12.5px;color:#b91c1c">
+        <span style="font-family:'Geist Mono',monospace">✕ stream disconnected</span>
+        <span style="color:#52525b">showing snapshot from {{ snapshotAt }} — {{ discDetail }}</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ showNeedsBanner }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ goFailures }}" style="flex:none;display:flex;align-items:center;gap:10px;padding:9px 24px;background:rgba(217,119,6,0.10);border-bottom:1px solid rgba(217,119,6,0.30);font-size:12.5px;color:#b45309;cursor:pointer" style-hover="background:rgba(217,119,6,0.14)">
+        <span style="font-family:'Geist Mono',monospace">⚑ {{ needsCount }} runs need human input</span>
+        <span style="color:#52525b">every other loop is proceeding without you</span>
+        <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:11px;color:#b45309">open failures →</span>
+      </div>
+    </sc-if>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 40px">
+
+      <!-- ══ RUNS ══ -->
+      <sc-if value="{{ showRuns }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px">
+          <div style="font-size:20px;font-weight:600;letter-spacing:-.01em">Runs</div>
+          <div style="font-size:12.5px;color:#71717a">{{ runsSummary }}</div>
+        </div>
+        <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid #1a1a1e;border-radius:8px;overflow:hidden">
+            <sc-for list="{{ skels }}" as="sk" hint-placeholder-count="6">
+              <div style="height:40px;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid #f4f4f5">
+                <span style="height:10px;border-radius:3px;background:#e4e4e7;width:{{ sk.w1 }};animation:lgSkel 1.6s ease-in-out infinite"></span>
+                <span style="height:10px;border-radius:3px;background:#f4f4f5;width:{{ sk.w2 }};animation:lgSkel 1.6s ease-in-out .2s infinite"></span>
+                <span style="height:10px;border-radius:3px;background:#f4f4f5;width:{{ sk.w3 }};animation:lgSkel 1.6s ease-in-out .4s infinite"></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:12px;font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">GET /api/snapshot …</div>
+        </sc-if>
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed #d4d4d8;border-radius:8px;padding:56px 24px;display:flex;flex-direction:column;align-items:center;gap:8px">
+            <span style="font-family:'Geist Mono',monospace;font-size:13px;color:#71717a">○ no engagements</span>
+            <span style="font-size:12.5px;color:#71717a;text-align:center;max-width:380px">The orchestrator hasn't started any engagements yet. Rows will appear here the moment the first loop is queued.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hasData }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid #1a1a1e;border-radius:8px;overflow:hidden;background:#ffffff">
+            <div style="display:grid;grid-template-columns:215px 145px 155px 130px 90px 100px 1fr;gap:0 16px;padding:0 16px 0 19px;height:34px;align-items:center;border-bottom:1px solid #1a1a1e;background:#fafafa;font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a">
+              <span>engagement</span><span>status</span><span>active loop</span><span>iteration</span><span>attempt</span><span>last event</span><span>last note</span>
+            </div>
+            <sc-for list="{{ runRows }}" as="r" hint-placeholder-count="8">
+              <div onClick="{{ r.go }}" style="display:grid;grid-template-columns:215px 145px 155px 130px 90px 100px 1fr;gap:0 16px;padding:0 16px;height:41px;align-items:center;border-bottom:1px solid #f4f4f5;border-left:3px solid {{ r.accent }};cursor:{{ r.cursor }};background:{{ r.rowBg }};transition:background .8s ease" style-hover="background:#f4f4f5">
+                <span style="display:flex;flex-direction:column;min-width:0;line-height:1.25"><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a">{{ r.id }}</span></span>
+                <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;width:fit-content;font-family:'Geist Mono',monospace;font-size:11px;background:{{ r.stBg }};border:1px solid {{ r.stBorder }};color:{{ r.stFg }}"><span>{{ r.stGlyph }}</span>{{ r.stLabel }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:{{ r.loopFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.loop }}</span>
+                <span style="display:flex;align-items:center;gap:8px"><span style="display:flex;gap:3px"><sc-for list="{{ r.iterSegs }}" as="sg" hint-placeholder-count="4"><span style="width:14px;height:4px;border-radius:2px;background:{{ sg.bg }}"></span></sc-for></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;font-variant-numeric:tabular-nums">{{ r.iterLabel }}</span></span>
+                <span style="display:flex;align-items:center;gap:6px"><span style="display:flex;gap:4px"><sc-for list="{{ r.attDots }}" as="ad" hint-placeholder-count="3"><span style="width:6px;height:6px;border-radius:50%;background:{{ ad.bg }};border:1px solid {{ ad.border }}"></span></sc-for></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;font-variant-numeric:tabular-nums">{{ r.attLabel }}</span></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:{{ r.timeFg }};font-variant-numeric:tabular-nums;white-space:nowrap">{{ r.lastEvent }}</span>
+                <span style="font-size:12px;color:#71717a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.note }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:20px;font-family:'Geist Mono',monospace;font-size:11px;color:#71717a"><span>iteration = executor↔reviewer round (max 4)</span><span>attempt = orchestrator retry (max 2)</span><span>rows update in place via SSE — no reordering while connected</span></div>
+        </sc-if>
+      </sc-if>
+
+      <!-- ══ LOOP DETAIL ══ -->
+      <sc-if value="{{ showLoop }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;font-family:'Geist Mono',monospace;font-size:11.5px;color:#71717a;margin-bottom:14px"><a href="#" onClick="{{ goRuns }}" style="color:#71717a">runs</a><span style="color:#a1a1aa">/</span><span>{{ det.id }}</span><span style="color:#a1a1aa">/</span><span style="color:#52525b">{{ det.runId }}</span></div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+          <div style="font-size:20px;font-weight:600;letter-spacing:-.01em">{{ det.name }}</div>
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11.5px;background:{{ det.stBg }};border:1px solid {{ det.stBorder }};color:{{ det.stFg }}"><span>{{ det.stGlyph }}</span>{{ det.stLabel }}</span>
+        </div>
+        <div style="display:flex;gap:20px;font-family:'Geist Mono',monospace;font-size:11.5px;color:#71717a;margin-bottom:20px;font-variant-numeric:tabular-nums"><span>loop: <span style="color:#52525b">{{ det.loop }}</span></span><span>iteration <span style="color:#52525b">{{ det.iterLabel }}</span></span><span>attempt <span style="color:#52525b">{{ det.attLabel }}</span></span><span>last event <span style="color:#52525b">{{ det.lastEvent }}</span></span></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+          <sc-for list="{{ det.loopsRow }}" as="lp" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:6px;border:1px solid {{ lp.border }};background:{{ lp.bg }}">
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#a1a1aa">{{ lp.seq }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:12px;color:{{ lp.nameFg }}">{{ lp.name }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ lp.fg }}">{{ lp.glyph }} {{ lp.label }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#a1a1aa">{{ lp.activeLabel }}</span>
+              </div>
+              <sc-if value="{{ lp.showArrow }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#a1a1aa">→</span></sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ det.showAdjusted }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(217,119,6,0.30);background:rgba(217,119,6,0.06);border-radius:8px;padding:12px 16px;margin-bottom:20px">
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#b45309;margin-bottom:6px">⟳ attempt {{ det.attempt }} — orchestrator adjusted instructions</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;line-height:1.6;color:#3f3f46;white-space:pre-wrap">{{ det.adjusted }}</div>
+          </div>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start">
+          <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:18px 20px">
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a;margin-bottom:16px">iterations — executor ↔ reviewer</div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ det.iterations }}" as="it" hint-placeholder-count="3">
+                <div style="display:grid;grid-template-columns:26px 1fr;gap:0 14px">
+                  <div style="display:flex;flex-direction:column;align-items:center"><span style="width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10.5px;background:{{ it.nodeBg }};border:1px solid {{ it.nodeBorder }};color:{{ it.nodeFg }}">{{ it.n }}</span><span style="width:1px;flex:1;background:#d4d4d8;display:{{ it.railDisplay }}"></span></div>
+                  <div style="padding-bottom:{{ it.padBottom }}">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px"><span style="font-size:12.5px;font-weight:500">iteration {{ it.n }}</span><span style="display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:10.5px;background:{{ it.vBg }};border:1px solid {{ it.vBorder }};color:{{ it.vFg }}">{{ it.vGlyph }} {{ it.verdict }}</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a;margin-left:auto;font-variant-numeric:tabular-nums">{{ it.when }}</span></div>
+                    <div style="font-size:12.5px;color:#52525b;line-height:1.55;margin-bottom:6px">{{ it.executor }}</div>
+                    <div style="border-left:2px solid #d4d4d8;padding:2px 0 2px 10px;font-size:12px;color:#71717a;line-height:1.5;margin-bottom:7px"><span style="color:#71717a">reviewer:</span> {{ it.notes }}</div>
+                    <a href="{{ it.traceHref }}" style="font-family:'Geist Mono',monospace;font-size:11px">{{ it.trace }} ↗</a>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ det.showPendingIter }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid;grid-template-columns:26px 1fr;gap:0 14px"><span style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10.5px;border:1px dashed #a1a1aa;color:#71717a;justify-self:center">{{ det.nextIterN }}</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;align-self:center">{{ det.pendingIterLabel }}</span></div>
+              </sc-if>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px">
+              <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a;margin-bottom:12px">gate checks</div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ det.gates }}" as="g" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px;background:{{ g.bg }}">
+                    <span style="font-family:'Geist Mono',monospace;font-size:12px;width:14px;text-align:center;color:{{ g.fg }}">{{ g.glyph }}</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#3f3f46;flex:1">{{ g.name }}</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ g.fg }}">{{ g.state }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:10px;font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a">{{ det.gateSummary }}</div>
+            </div>
+            <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px">
+              <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a;margin-bottom:12px">scrape provenance</div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ det.scrapes }}" as="sc" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:10px;font-family:'Geist Mono',monospace;font-size:11px;line-height:1.4"><span style="color:{{ sc.codeFg }};width:26px;flex:none;font-variant-numeric:tabular-nums">{{ sc.code }}</span><span style="color:#52525b;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sc.url }}</span><span style="color:#71717a;flex:none;font-variant-numeric:tabular-nums">{{ sc.when }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+        <sc-if value="{{ det.hasComparison }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid #e4e4e7;border-radius:8px;background:#ffffff;padding:18px 20px;margin-top:24px">
+            <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a">{{ det.cmp.title }}</span>
+              <span style="font-size:11.5px;color:#a1a1aa">{{ det.cmp.note }}</span>
+            </div>
+            <div style="border:1px solid #e4e4e7;border-radius:6px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:{{ det.cmp.grid }};gap:0 16px;padding:0 14px;height:30px;align-items:center;background:#fafafa;border-bottom:1px solid #e4e4e7">
+                <sc-for list="{{ det.cmp.cols }}" as="cc" hint-placeholder-count="5"><span style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a">{{ cc.t }}</span></sc-for>
+              </div>
+              <sc-for list="{{ det.cmp.rows }}" as="cr" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:{{ det.cmp.grid }};gap:0 16px;padding:0 14px;height:33px;align-items:center;border-bottom:1px solid #f4f4f5">
+                  <sc-for list="{{ cr.cells }}" as="cl" hint-placeholder-count="5"><span style="font-family:{{ cl.font }};font-size:{{ cl.size }};font-weight:{{ cl.weight }};color:{{ cl.fg }};font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cl.t }}</span></sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <!-- ══ FAILURES ══ -->
+      <sc-if value="{{ showFailures }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px">
+          <div style="font-size:20px;font-weight:600;letter-spacing:-.01em">Failures</div>
+          <div style="font-size:12.5px;color:#71717a">{{ failSummary }}</div>
+        </div>
+        <sc-if value="{{ failEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed #d4d4d8;border-radius:8px;padding:56px 24px;display:flex;flex-direction:column;align-items:center;gap:8px"><span style="font-family:'Geist Mono',monospace;font-size:13px;color:#059669">✓ nothing blocked</span><span style="font-size:12.5px;color:#71717a">No gate_failed or needs_human runs. Loops are handling it.</span></div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <sc-for list="{{ failRows }}" as="f" hint-placeholder-count="3">
+            <div onClick="{{ f.go }}" style="border:1px solid #1a1a1e;border-left:3px solid {{ f.accent }};border-radius:8px;background:#ffffff;padding:14px 18px;cursor:pointer" style-hover="background:#fafafa">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11px;background:{{ f.stBg }};border:1px solid {{ f.stBorder }};color:{{ f.stFg }}"><span>{{ f.stGlyph }}</span>{{ f.stLabel }}</span>
+                <span style="font-size:13px;font-weight:500">{{ f.name }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">{{ f.ref }}</span>
+                <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;font-variant-numeric:tabular-nums">{{ f.when }}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:150px 1fr;gap:6px 16px;font-size:12.5px;line-height:1.55">
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;padding-top:2px">failed check</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#dc2626;width:fit-content;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.22);border-radius:4px;padding:1px 8px">✕ {{ f.check }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;padding-top:1px">reviewer objection</span>
+                <span style="color:#52525b">“{{ f.objection }}”</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;padding-top:1px">{{ f.adjLabel }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:{{ f.adjFg }};line-height:1.6">{{ f.adjusted }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- ══ CUSTOMERS ══ -->
+      <sc-if value="{{ showCustomers }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px">
+          <div style="font-size:20px;font-weight:600;letter-spacing:-.01em">Customers</div>
+          <div style="font-size:12.5px;color:#71717a">{{ custSummary }}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <sc-for list="{{ custCards }}" as="c" hint-placeholder-count="4">
+            <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ c.dot }};flex:none"></span>
+                <span style="font-size:13.5px;font-weight:500">{{ c.name }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">{{ c.id }}</span>
+                <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ c.stFg }}">{{ c.stLabel }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;border-top:1px solid #f4f4f5">
+                <sc-for list="{{ c.files }}" as="fl" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid #f4f4f5;font-family:'Geist Mono',monospace;font-size:11.5px"><span style="color:#71717a">▤</span><span style="color:#3f3f46;flex:1">{{ fl.name }}</span><span style="color:#71717a;font-variant-numeric:tabular-nums">{{ fl.when }}</span></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:16px;font-family:'Geist Mono',monospace;font-size:11px">
+                <a href="{{ c.repoHref }}">{{ c.repo }} ↗</a>
+                <sc-if value="{{ c.hasSite }}" hint-placeholder-val="{{ false }}"><a href="{{ c.siteHref }}">{{ c.site }} ↗</a></sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1440, &quot;height&quot;: 900 },
+  &quot;connection&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;connected&quot;, &quot;options&quot;: [&quot;connected&quot;, &quot;reconnecting&quot;, &quot;disconnected&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Simulation&quot; },
+  &quot;dataState&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;live&quot;, &quot;options&quot;: [&quot;live&quot;, &quot;loading&quot;, &quot;empty&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Simulation&quot; },
+  &quot;simulateEvents&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Simulation&quot; }
+}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const m = Date.now();
+    this.state = { view: 'runs', sel: 'eng_0142', now: m, flash: null, last: this.seed(m) };
+  }
+  seed(m) { const o = {}; this.data(m).forEach(e => o[e.key] = e.ago); return o; }
+  data(m) {
+    const s = 1000;
+    return [
+      { key:'eng_0142', id:'eng_0142', name:'Meridian Dental', status:'needs_human', loop:'website', iter:3, attempt:1, ago:14*60,
+        note:'deploy_200 failed — staging DNS for meridiandental.pages.dev unreachable',
+        runId:'run_web_a1', adjusted:'attempt 0 failed gate product_coverage≥25%.\nadjustment: scrape /services/* subpages before drafting; enumerate all 11 treatments on the services page; cap hero copy at 40 words.',
+        iterations:[
+          {n:1, when:-52*60, verdict:'revise', executor:'Drafted 6-page site from kb: home, services, team, pricing, contact, book. Pulled 11 treatments from research.md.', notes:'Hero overclaims ("#1 rated in Portland") — no source in kb. Services grid missing sedation dentistry. Cut testimonial placeholders.', trace:'pi://trace/8f3a92c1'},
+          {n:2, when:-38*60, verdict:'revise', executor:'Removed unsourced claims, added sedation dentistry, replaced testimonials with insurance-accepted strip.', notes:'Copy fixed. Deploy preview 404s on /pricing — route missing from build output.', trace:'pi://trace/a01dc4e7'},
+          {n:3, when:-14*60, verdict:'approve', executor:'Fixed /pricing route, all 6 pages build. Deployed to staging, submitted for gate.', notes:'Content approved. Gate deploy_200 failed at check time: staging host unreachable (DNS). Not fixable by the loop — escalating.', trace:'pi://trace/c77b0912'}],
+        gates:[{name:'competitors≥5', state:'pass'},{name:'product_coverage≥25%', state:'pass'},{name:'copy_no_unsourced_claims', state:'pass'},{name:'deploy_200', state:'fail'},{name:'lighthouse≥85', state:'pending'}],
+        failedCheck:'deploy_200', objection:'Staging host unreachable at gate time — DNS for meridiandental.pages.dev does not resolve. Outside loop control.',
+        scrapes:[{url:'meridiandentalpdx.com/services', code:200, when:-3*3600},{url:'meridiandentalpdx.com/services/implants', code:200, when:-3*3600},{url:'meridiandentalpdx.com/team', code:200, when:-3*3600},{url:'yelp.com/biz/meridian-dental-portland', code:403, when:-3*3600},{url:'meridiandental.pages.dev', code:0, when:-15*60}],
+        kb:[{name:'research.md', when:-5*3600},{name:'competitors.md', when:-5*3600},{name:'sitemap.md', when:-52*60},{name:'copy-draft.md', when:-14*60}], site:'meridiandental.pages.dev' },
+      { key:'eng_0141', id:'eng_0141', name:'Cobalt Legal', status:'running', loop:'company-research', iter:2, attempt:0, ago:38,
+        note:'iteration 2 running — reviewer requested deeper competitor pricing',
+        runId:'run_res_a0',
+        iterations:[
+          {n:1, when:-19*60, verdict:'revise', executor:'Compiled firm profile: 4 practice areas, 7 attorneys, fee structures from site + state bar records. Found 6 competitors.', notes:'Competitor set is good; pricing comparison too shallow — 4 of 6 competitors have published rates, get them.', trace:'pi://trace/2b9e11f0'}],
+        gates:[{name:'competitors≥5', state:'pass'},{name:'product_coverage≥25%', state:'pending'},{name:'sources_cited', state:'pending'}],
+        scrapes:[{url:'cobaltlegal.com', code:200, when:-24*60},{url:'cobaltlegal.com/attorneys', code:200, when:-24*60},{url:'avvo.com/search?q=cobalt', code:200, when:-21*60},{url:'harborlaw.com/fees', code:200, when:-6*60}],
+        kb:[{name:'research.md', when:-19*60},{name:'competitors.md', when:-6*60}], site:null,
+        comparison:{ title:'competitor comparison', note:'assembled by executor, iteration 2 — pricing depth requested by reviewer',
+          cols:['competitor','practice overlap','attorneys','published rates','hourly range','source'], grid:'170px 110px 80px 110px 110px 1fr',
+          rows:[
+            ['Harbor Law Group','3/4','12','yes','$250–$425','harborlaw.com/fees'],
+            ['Roseline & Barr','4/4','9','yes','$275–$450','roselinebarr.com/pricing'],
+            ['Vantage Legal','2/4','5','yes','$200–$350','vantagelegal.com'],
+            ['Cedar Law PDX','2/4','3','yes','$180–$300','cedarlawpdx.com'],
+            ['Stallworth LLP','3/4','21','no','—','avvo.com profile'],
+            ['Grant & Mercer','1/4','7','no','—','site scrape']] } },
+      { key:'eng_0139', id:'eng_0139', name:'Harbor & Finch', status:'running', loop:'website', iter:1, attempt:0, ago:2*60,
+        note:'iteration 1 — executor drafting from approved research',
+        runId:'run_web_a0',
+        iterations:[],
+        gates:[{name:'competitors≥5', state:'pass'},{name:'product_coverage≥25%', state:'pending'},{name:'deploy_200', state:'pending'},{name:'lighthouse≥85', state:'pending'}],
+        scrapes:[{url:'harborandfinch.com', code:200, when:-2*3600},{url:'harborandfinch.com/menu', code:200, when:-2*3600}],
+        kb:[{name:'research.md', when:-4*3600},{name:'competitors.md', when:-4*3600},{name:'sitemap.md', when:-2*60}], site:null },
+      { key:'eng_0138', id:'eng_0138', name:'Atlas Physio', status:'needs_human', loop:'company-research', iter:4, attempt:2, ago:3*3600,
+        note:'competitors≥5 failed on all 3 attempts — market too thin',
+        runId:'run_res_a2', adjusted:'attempts 0–1 failed gate competitors≥5 (found 3, then 4).\nadjustment: widen radius to 25mi, include chains (Athletico, ATI), accept adjacent verticals (sports chiro) with a flag.',
+        iterations:[
+          {n:1, when:-6*3600, verdict:'revise', executor:'Widened search to 25mi radius per adjusted instructions. Found 4 qualifying clinics + 2 chains.', notes:'Chains lack local pricing pages; profiles too thin to count toward the gate.', trace:'pi://trace/91ac3d55'},
+          {n:2, when:-5*3600, verdict:'revise', executor:'Pulled chain pricing from national rate cards, flagged as non-local. 6 candidate competitors total.', notes:'Rate-card data is 2024-vintage; flagged entries don\u2019t meet the freshness bar. 4 valid.', trace:'pi://trace/77e0b2aa'},
+          {n:3, when:-4*3600, verdict:'revise', executor:'Attempted adjacent verticals: 2 sports-chiro clinics profiled with flags.', notes:'Adjacent verticals dilute the comparison — recommend human call on whether the gate should relax for thin markets.', trace:'pi://trace/d3f8c016'},
+          {n:4, when:-3*3600, verdict:'escalate', executor:'No further sources available inside constraints. Summarized the 4 valid + 4 flagged competitors.', notes:'Gate cannot pass as specified. Escalating: relax competitors≥5 for this market, or accept flagged entries.', trace:'pi://trace/4b21e9c8'}],
+        gates:[{name:'competitors≥5', state:'fail'},{name:'product_coverage≥25%', state:'pass'},{name:'sources_cited', state:'pass'}],
+        failedCheck:'competitors≥5', objection:'Only 4 competitors meet freshness + locality criteria after 3 attempts. The market is genuinely thin; the gate needs a human decision, not another retry.',
+        scrapes:[{url:'atlasphysio.co', code:200, when:-8*3600},{url:'athletico.com/locations/or', code:200, when:-6*3600},{url:'google.com/maps/search/physiotherapy', code:429, when:-5*3600},{url:'ati-pt.com/rates', code:200, when:-5*3600}],
+        kb:[{name:'research.md', when:-3*3600},{name:'competitors.md', when:-3*3600}], site:null,
+        comparison:{ title:'competitor comparison', note:'8 candidates — 4 valid toward competitors≥5, 4 flagged; the gap is why this run escalated',
+          cols:['competitor','distance','published pricing','freshness','gate status'], grid:'180px 80px 150px 90px 1fr',
+          rows:[
+            ['Cascade PT','6mi','$140/session','2026','✓ valid'],
+            ['Riverbend Physio','11mi','$120/session','2026','✓ valid'],
+            ['Summit Sports Rehab','18mi','$155/session','2025','✓ valid'],
+            ['Northtown PT','22mi','$130/session','2025','✓ valid'],
+            ['Athletico (chain)','9mi','national rate card','2024','⚑ flagged: stale pricing'],
+            ['ATI (chain)','14mi','national rate card','2024','⚑ flagged: stale pricing'],
+            ['FlexCore Chiro','8mi','$95/session','2026','⚑ flagged: adjacent vertical'],
+            ['Pearl Rehab Collective','3mi','—','2026','⚑ flagged: no pricing found']] } },
+      { key:'eng_0136', id:'eng_0136', name:'Kestrel Roofing', status:'failed', loop:'website', iter:4, attempt:2, ago:26*3600,
+        note:'lighthouse≥85 failed after max attempts — run terminated',
+        runId:'run_web_a2', adjusted:'attempts 0–1 failed gate lighthouse≥85 (78, 81).\nadjustment: drop hero video, inline critical CSS, lazy-load gallery, self-host fonts.',
+        iterations:[
+          {n:1, when:-30*3600, verdict:'revise', executor:'Applied perf adjustments: hero video removed, critical CSS inlined, gallery lazy-loaded.', notes:'LCP improved to 2.9s but score 82 — third-party booking widget blocks main thread 1.2s.', trace:'pi://trace/f0a3b7d2'},
+          {n:2, when:-28*3600, verdict:'revise', executor:'Deferred booking widget behind interaction. Score 84.', notes:'One point short. Remaining cost is the widget itself; removing it violates the sitemap requirement.', trace:'pi://trace/6c48e1a9'},
+          {n:3, when:-27*3600, verdict:'revise', executor:'Swapped widget for a static form posting to the booking API.', notes:'Score 87 locally but gate runs against staging where the API stub adds 800ms — 83 at the gate.', trace:'pi://trace/b8d20c3f'},
+          {n:4, when:-26*3600, verdict:'reject', executor:'No remaining perf headroom within sitemap constraints.', notes:'Gate unreachable on staging infra. Attempts exhausted — terminal failure recorded.', trace:'pi://trace/03e7fa61'}],
+        gates:[{name:'competitors≥5', state:'pass'},{name:'product_coverage≥25%', state:'pass'},{name:'deploy_200', state:'pass'},{name:'lighthouse≥85', state:'fail'}],
+        failedCheck:'lighthouse≥85', objection:'Score 83 at the gate vs 87 locally — the staging API stub adds 800ms the loop cannot remove. Attempts exhausted.',
+        scrapes:[{url:'kestrelroofing.net', code:200, when:-40*3600},{url:'kestrel-roofing.pages.dev', code:200, when:-26*3600}],
+        kb:[{name:'research.md', when:-40*3600},{name:'competitors.md', when:-38*3600},{name:'sitemap.md', when:-32*3600},{name:'copy-draft.md', when:-27*3600}], site:'kestrel-roofing.pages.dev' },
+      { key:'eng_0137', id:'eng_0137', name:'Bloom Floristry', status:'complete', loop:null, iter:null, attempt:null, ago:2*86400,
+        note:'both loops complete — site live', runId:null, iterations:[], gates:[], scrapes:[],
+        kb:[{name:'research.md', when:-4*86400},{name:'competitors.md', when:-4*86400},{name:'sitemap.md', when:-3*86400},{name:'copy-draft.md', when:-2*86400}], site:'bloomfloristry.co' },
+      { key:'eng_0135', id:'eng_0135', name:'Nord Kaffe', status:'complete', loop:null, iter:null, attempt:null, ago:5*86400,
+        note:'both loops complete — site live', runId:null, iterations:[], gates:[], scrapes:[],
+        kb:[{name:'research.md', when:-7*86400},{name:'competitors.md', when:-7*86400},{name:'sitemap.md', when:-6*86400},{name:'copy-draft.md', when:-5*86400}], site:'nordkaffe.com' },
+      { key:'eng_0134', id:'eng_0134', name:'Pinewood Vets', status:'new', loop:'company-research', iter:0, attempt:0, ago:9*60,
+        note:'queued — waiting for a worker slot', runId:'run_res_a0', iterations:[], gates:[{name:'competitors≥5', state:'pending'},{name:'product_coverage≥25%', state:'pending'},{name:'sources_cited', state:'pending'}], scrapes:[],
+        kb:[{name:'research.md', when:-9*60}], site:null }
+    ];
+  }
+  componentDidMount() {
+    this.tick = setInterval(() => this.setState({ now: Date.now() }), 10000);
+    this.sim = setInterval(() => {
+      if ((this.props.simulateEvents ?? true) === false) return;
+      if ((this.props.connection ?? 'connected') !== 'connected') return;
+      const live = ['eng_0141', 'eng_0139'];
+      const k = live[Math.floor(Math.random() * live.length)];
+      this.setState(s => ({ flash: k, now: Date.now(), last: Object.assign({}, s.last, { [k]: 0 }) }));
+      clearTimeout(this.ft);
+      this.ft = setTimeout(() => this.setState({ flash: null }), 1500);
+    }, 7000);
+    this.t0 = Date.now();
+  }
+  componentWillUnmount() { clearInterval(this.tick); clearInterval(this.sim); clearTimeout(this.ft); }
+  st(k) {
+    const M = {
+      running:     { fg:'#2563eb', bg:'rgba(37,99,235,0.10)',  border:'rgba(37,99,235,0.28)',  glyph:'◔' },
+      needs_human: { fg:'#b45309', bg:'rgba(217,119,6,0.12)',  border:'rgba(217,119,6,0.35)',  glyph:'⚑' },
+      complete:    { fg:'#059669', bg:'rgba(5,150,105,0.10)',  border:'rgba(5,150,105,0.28)',  glyph:'✓' },
+      pass:        { fg:'#059669', bg:'rgba(5,150,105,0.10)',  border:'rgba(5,150,105,0.28)',  glyph:'✓' },
+      approve:     { fg:'#059669', bg:'rgba(5,150,105,0.10)',  border:'rgba(5,150,105,0.28)',  glyph:'✓' },
+      failed:      { fg:'#dc2626', bg:'rgba(220,38,38,0.10)', border:'rgba(220,38,38,0.28)', glyph:'✕' },
+      fail:        { fg:'#dc2626', bg:'rgba(220,38,38,0.10)', border:'rgba(220,38,38,0.28)', glyph:'✕' },
+      reject:      { fg:'#dc2626', bg:'rgba(220,38,38,0.10)', border:'rgba(220,38,38,0.28)', glyph:'✕' },
+      revise:      { fg:'#2563eb', bg:'rgba(37,99,235,0.10)',  border:'rgba(37,99,235,0.28)',  glyph:'↺' },
+      escalate:    { fg:'#b45309', bg:'rgba(217,119,6,0.12)',  border:'rgba(217,119,6,0.35)',  glyph:'⚑' },
+      new:         { fg:'#52525b', bg:'rgba(113,113,122,0.08)', border:'rgba(113,113,122,0.22)', glyph:'○' },
+      pending:     { fg:'#71717a', bg:'transparent',            border:'rgba(113,113,122,0.22)', glyph:'○' }
+    };
+    return M[k] || M.pending;
+  }
+  rel(sec) {
+    if (sec == null) return '—';
+    if (sec < 5) return 'now';
+    if (sec < 60) return Math.floor(sec) + 's ago';
+    if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+    if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+    return Math.floor(sec / 86400) + 'd ago';
+  }
+  renderVals() {
+    const conn = this.props.connection ?? 'connected';
+    const dataState = this.props.dataState ?? 'live';
+    const elapsed = (this.state.now - (this.t0 || this.state.now)) / 1000;
+    const rows = this.data();
+    const ageOf = e => (this.state.last[e.key] === 0 ? elapsed - 0 : e.ago + elapsed) - (this.state.last[e.key] === 0 ? 0 : 0);
+    const age = e => this.state.last[e.key] === 0 ? Math.max(0, elapsed) : e.ago + elapsed;
+    const view = this.state.view;
+    const go = v => () => this.setState({ view: v });
+    const open = k => () => this.setState({ view: 'loop', sel: k });
+    const failures = rows.filter(e => e.status === 'needs_human' || e.status === 'failed');
+    const needsCount = rows.filter(e => e.status === 'needs_human').length;
+    const hasData = dataState === 'live';
+    const active = rows.filter(e => e.status === 'running' || e.status === 'needs_human' || e.status === 'new').length;
+
+    const connMeta = {
+      connected:    { dot:'#059669', fg:'#059669', label:'live', sub:'SSE /api/events', anim:'lgPulse 2s ease-in-out infinite' },
+      reconnecting: { dot:'#b45309', fg:'#b45309', label:'reconnecting', sub:'retry 2/5 in 4s', anim:'lgPulse .8s ease-in-out infinite' },
+      disconnected: { dot:'#dc2626', fg:'#dc2626', label:'disconnected', sub:'stream closed 12:41:03', anim:'none' }
+    }[conn];
+
+    const navItems = [
+      { key:'runs', label:'Runs', glyph:'▤', count:String(active), showCount:hasData, countFg:'#52525b', countBg:'rgba(113,113,122,0.08)', countBorder:'rgba(113,113,122,0.22)' },
+      { key:'failures', label:'Failures', glyph:'⚑', count:String(failures.length), showCount:hasData && failures.length > 0, countFg:'#b45309', countBg:'rgba(217,119,6,0.12)', countBorder:'rgba(217,119,6,0.35)' },
+      { key:'customers', label:'Customers', glyph:'▦', count:'', showCount:false, countFg:'', countBg:'', countBorder:'' }
+    ].map(n => {
+      const on = view === n.key || (n.key === 'runs' && view === 'loop');
+      return Object.assign(n, { go: go(n.key), bg: on ? '#e4e4e7' : 'transparent', fg: on ? '#18181b' : '#52525b', glyphFg: on ? '#18181b' : '#71717a' });
+    });
+
+    const runRows = rows.map(e => {
+      const s = this.st(e.status);
+      const activeRun = e.status === 'running' || e.status === 'needs_human' || e.status === 'new';
+      const iterSegs = [1,2,3,4].map(i => ({ bg: activeRun && e.iter >= i ? s.fg : '#d4d4d8' }));
+      const attDots = [0,1,2].map(i => ({ bg: activeRun && e.attempt >= i ? (e.attempt > 0 ? '#b45309' : s.fg) : 'transparent', border: activeRun ? '#a1a1aa' : '#d4d4d8' }));
+      const nh = e.status === 'needs_human';
+      return {
+        id: e.id, name: e.name, go: open(e.key), cursor: 'pointer',
+        stFg: s.fg, stBg: s.bg, stBorder: s.border, stGlyph: s.glyph, stLabel: e.status,
+        loop: e.loop || '—', loopFg: e.loop ? '#52525b' : '#a1a1aa',
+        iterSegs, iterLabel: activeRun && e.iter > 0 ? e.iter + '/4' : '—',
+        attDots, attLabel: activeRun ? e.attempt + '/2' : '—',
+        lastEvent: this.rel(age(e)), timeFg: age(e) < 120 ? '#2563eb' : '#71717a',
+        note: e.note,
+        accent: 'transparent',
+        rowBg: this.state.flash === e.key ? 'rgba(37,99,235,0.09)' : nh ? 'rgba(217,119,6,0.04)' : 'transparent'
+      };
+    });
+
+    const d = rows.find(e => e.key === this.state.sel) || rows[0];
+    const ds = this.st(d.status);
+    const iterations = (d.iterations || []).map((it, i, arr) => {
+      const v = this.st(it.verdict);
+      return { n: it.n, executor: it.executor, notes: it.notes, trace: it.trace, traceHref: '#' + it.trace,
+        when: this.rel(-it.when), verdict: it.verdict, vFg: v.fg, vBg: v.bg, vBorder: v.border, vGlyph: v.glyph,
+        nodeFg: v.fg, nodeBg: v.bg, nodeBorder: v.border,
+        railDisplay: i < arr.length - 1 || (d.status === 'running' && d.iter < 4) ? 'block' : 'none',
+        padBottom: i < arr.length - 1 ? '22px' : '4px' };
+    });
+    const gates = (d.gates || []).map(g => {
+      const s = this.st(g.state);
+      return { name: g.name, state: g.state, fg: s.fg, glyph: s.glyph, bg: g.state === 'fail' ? 'rgba(220,38,38,0.06)' : 'transparent' };
+    });
+    const passed = (d.gates || []).filter(g => g.state === 'pass').length;
+    const loopStatuses = d.status === 'complete' ? ['gate_passed', 'gate_passed']
+      : d.status === 'new' ? ['queued', 'queued']
+      : d.loop === 'website' ? ['gate_passed', d.status === 'failed' ? 'gate_failed' : d.status === 'needs_human' ? 'needs_human' : 'running']
+      : [d.status === 'failed' ? 'gate_failed' : d.status === 'needs_human' ? 'needs_human' : 'running', 'queued'];
+    const loopsRow = ['company-research', 'website'].map((nm, i) => {
+      const stKey = loopStatuses[i] === 'gate_passed' ? 'pass' : loopStatuses[i] === 'gate_failed' ? 'fail' : loopStatuses[i];
+      const s = this.st(stKey);
+      const isActive = d.loop === nm;
+      return { name: nm, seq: '0' + (i + 1), label: loopStatuses[i], glyph: s.glyph, fg: s.fg, bg: isActive ? s.bg : 'transparent',
+        border: isActive ? s.border : '#e4e4e7', nameFg: isActive ? '#18181b' : '#71717a',
+        showArrow: i === 0, activeLabel: isActive ? 'active' : '' };
+    });
+    const det = {
+      id: d.id, runId: d.runId || '—', name: d.name, loop: d.loop || '—',
+      stFg: ds.fg, stBg: ds.bg, stBorder: ds.border, stGlyph: ds.glyph, stLabel: d.status,
+      iterLabel: d.iter ? d.iter + '/4' : '—', attLabel: d.attempt != null ? d.attempt + '/2' : '—', attempt: d.attempt,
+      lastEvent: this.rel(age(d)),
+      loopsRow, showAdjusted: !!d.adjusted, adjusted: d.adjusted || '',
+      hasComparison: !!d.comparison,
+      cmp: d.comparison ? {
+        title: d.comparison.title, note: d.comparison.note, grid: d.comparison.grid,
+        cols: d.comparison.cols.map(t => ({ t })),
+        rows: d.comparison.rows.map(r => ({ cells: r.map((t, i) => ({
+          t, font: i > 0 ? "'Geist Mono',monospace" : 'Geist,system-ui,sans-serif',
+          size: i > 0 ? '11.5px' : '12.5px',
+          fg: t.indexOf('✓') === 0 ? '#059669' : t.indexOf('⚑') === 0 ? '#b45309' : i === 0 ? '#18181b' : '#52525b',
+          weight: i === 0 ? 500 : 400 })) }))
+      } : { title:'', note:'', grid:'1fr', cols: [], rows: [] },
+      iterations, gates, gateSummary: passed + '/' + (d.gates || []).length + ' passed · gate runs after reviewer approval',
+      showPendingIter: d.status === 'running' && (d.iterations || []).length < 4,
+      nextIterN: String((d.iterations || []).length + 1),
+      pendingIterLabel: 'iteration ' + ((d.iterations || []).length + 1) + ' in progress — executor working',
+      scrapes: (d.scrapes || []).map(sc => ({ url: sc.url, code: sc.code === 0 ? 'ERR' : String(sc.code), codeFg: sc.code >= 200 && sc.code < 300 ? '#059669' : '#dc2626', when: this.rel(-sc.when + elapsed) }))
+    };
+
+    const failRows = failures.map(e => {
+      const s = this.st(e.status);
+      return { name: e.name, ref: e.id + ' / ' + e.runId, go: open(e.key), when: this.rel(age(e)),
+        stFg: s.fg, stBg: s.bg, stBorder: s.border, stGlyph: s.glyph, stLabel: e.status,
+        accent: s.fg, check: e.failedCheck || '—', objection: e.objection || '—',
+        adjLabel: e.status === 'failed' ? 'final adjustment' : 'orchestrator adjustment',
+        adjusted: e.adjusted ? e.adjusted.split('\n').pop().replace('adjustment: ', '') : '—',
+        adjFg: e.status === 'needs_human' ? '#b45309' : '#52525b' };
+    });
+
+    const custCards = rows.filter(e => e.kb && e.kb.length).map(e => {
+      const s = this.st(e.status);
+      return { name: e.name, id: e.id, dot: s.fg, stFg: s.fg, stLabel: e.status,
+        files: e.kb.map(f => ({ name: f.name, when: this.rel(-f.when + elapsed) })),
+        repo: 'github.com/tenwhy/kb-' + e.key, repoHref: 'https://github.com/tenwhy',
+        hasSite: !!e.site, site: e.site || '', siteHref: e.site ? 'https://' + e.site : '#' };
+    });
+
+    return {
+      conn: connMeta, snapshotAt: '12:41:03', discDetail: 'auto-retrying every 5s; data may be stale',
+      navItems, goRuns: go('runs'), goFailures: go('failures'),
+      showRuns: view === 'runs', showLoop: view === 'loop', showFailures: view === 'failures', showCustomers: view === 'customers',
+      isLoading: dataState === 'loading' && view === 'runs', isEmpty: dataState === 'empty' && view === 'runs',
+      hasData: hasData && view === 'runs',
+      showNeedsBanner: hasData && needsCount > 0 && view !== 'failures' && view !== 'loop',
+      showDiscBanner: conn === 'disconnected', needsCount: String(needsCount),
+      runsSummary: rows.length + ' engagements · ' + active + ' active · sorted by last event',
+      skels: [{w1:'160px',w2:'90px',w3:'240px'},{w1:'120px',w2:'110px',w3:'180px'},{w1:'180px',w2:'80px',w3:'260px'},{w1:'140px',w2:'100px',w3:'150px'},{w1:'170px',w2:'90px',w3:'220px'},{w1:'130px',w2:'120px',w3:'190px'}],
+      runRows, det, failRows,
+      failSummary: failures.length + ' blocked · ordered by what to unblock next',
+      failEmpty: hasData === true && failures.length === 0,
+      custCards, custSummary: custCards.length + ' engagements · knowledge base index'
+    };
+  }
+}
+</script>
+</body>
+</html>

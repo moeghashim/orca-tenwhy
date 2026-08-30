@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>html,body{margin:0;padding:0;background:#f4f4f5}a{color:#2563eb;text-decoration:none}a:hover{color:#1d4ed8;text-decoration:underline}@keyframes lgPulse{0%,100%{opacity:1}50%{opacity:.35}}</style>
+</helmet>
+<div style="width:1440px;background:#f4f4f5;color:#18181b;font-family:Geist,system-ui,sans-serif;font-size:13px;padding:48px 64px 72px;box-sizing:border-box" data-screen-label="Component specs">
+  <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#71717a;margin-bottom:8px">tenwhy / loop graph / component specs</div>
+  <div style="font-size:26px;font-weight:600;letter-spacing:-.01em;margin-bottom:10px">Loop Graph — component specs</div>
+  <div style="font-size:13px;color:#52525b;max-width:640px;line-height:1.6;margin-bottom:12px">Framework-agnostic specs for the read-only operations console. Tokens live in <span style="font-family:'Geist Mono',monospace;color:#3f3f46">tokens.json</span>; every component below renders from those values only. All components are pure functions of snapshot + SSE state — none dispatch writes.</div>
+  <div style="display:flex;gap:24px;font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;margin-bottom:44px"><span>type: Geist / Geist Mono</span><span>base grid: 4px</span><span>row height: fixed 41px</span><span>numerals: tabular</span></div>
+
+  <!-- nav model -->
+  <div style="margin-bottom:44px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">1 · Layout &amp; navigation model</div>
+    <div style="font-size:12.5px;color:#71717a;margin-bottom:16px;max-width:640px;line-height:1.6">Fixed 220px sidebar + scrolling content pane. Three top-level views; Loop detail is a drill-in from any run reference (Runs row, Failures card), never a nav item. Global banners stack above content: disconnected (red) always outranks needs_human (amber).</div>
+    <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:20px;display:flex;gap:32px;align-items:center">
+      <div style="display:flex;border:1px solid #d4d4d8;border-radius:6px;overflow:hidden;flex:none">
+        <div style="width:110px;background:#fafafa;border-right:1px solid #d4d4d8;padding:10px 8px;display:flex;flex-direction:column;gap:6px;font-family:'Geist Mono',monospace;font-size:9.5px;color:#71717a"><span style="color:#3f3f46">tenwhy/</span><span style="background:#e4e4e7;border-radius:3px;padding:3px 6px;color:#18181b">▤ Runs</span><span style="padding:3px 6px">⚑ Failures</span><span style="padding:3px 6px">▦ Customers</span></div>
+        <div style="width:220px;padding:10px;display:flex;flex-direction:column;gap:6px"><span style="height:14px;border-radius:3px;background:rgba(217,119,6,0.15);border:1px solid rgba(217,119,6,0.3)"></span><span style="height:8px;width:60%;border-radius:3px;background:#d4d4d8"></span><span style="height:52px;border-radius:4px;background:#f4f4f5;border:1px solid #d4d4d8"></span></div>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#71717a;line-height:2">runs (home) ──row click──→ loop detail<br>failures ──card click──→ loop detail<br>loop detail ──breadcrumb──→ runs<br>customers · standalone index<br><span style="color:#71717a">state: GET /api/snapshot → SSE /api/events (patch by id)</span></div>
+    </div>
+  </div>
+
+  <!-- status badges -->
+  <div style="margin-bottom:44px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">2 · Status badge system</div>
+    <div style="font-size:12.5px;color:#71717a;margin-bottom:16px;max-width:640px;line-height:1.6">One system everywhere a status appears: badge, row left-accent, timeline node, gate row, customer dot. Color is never alone — always glyph + verbatim lowercase enum label in mono. Tinted bg ≈10% alpha of fg, border ≈28%.</div>
+    <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(37,99,235,0.10);border:1px solid rgba(37,99,235,0.28);color:#2563eb">◔ running</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(5,150,105,0.10);border:1px solid rgba(5,150,105,0.28);color:#059669">✓ gate_passed</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(220,38,38,0.10);border:1px solid rgba(220,38,38,0.28);color:#dc2626">✕ gate_failed</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(217,119,6,0.12);border:1px solid rgba(217,119,6,0.35);color:#b45309">⚑ needs_human</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(113,113,122,0.08);border:1px solid rgba(113,113,122,0.22);color:#52525b">○ queued</span>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;line-height:1.9">aliases → engagement.new = queued · engagement.complete = passed · verdict.revise = running(↺) · verdict.escalate = needs_human · gate.pending = queued<br>needs_human additionally gets: 3px amber row accent + 4%-alpha row tint + global banner. It must be the loudest thing on any screen.</div>
+    </div>
+  </div>
+
+  <!-- progress indicators -->
+  <div style="margin-bottom:44px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">3 · Progress indicators — iteration n/4, attempt n/2</div>
+    <div style="font-size:12.5px;color:#71717a;margin-bottom:16px;max-width:640px;line-height:1.6">Iterations are segments (work accumulating toward a cap); attempts are dots (discrete retries — rare, so attempt&gt;0 renders amber as a quiet warning). Always paired with a tabular mono fraction; never percentage bars.</div>
+    <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:20px;display:grid;grid-template-columns:220px 1fr;gap:14px 24px;align-items:center;font-family:'Geist Mono',monospace;font-size:11.5px">
+      <span style="display:flex;align-items:center;gap:8px"><span style="display:flex;gap:3px"><span style="width:14px;height:4px;border-radius:2px;background:#2563eb"></span><span style="width:14px;height:4px;border-radius:2px;background:#2563eb"></span><span style="width:14px;height:4px;border-radius:2px;background:#d4d4d8"></span><span style="width:14px;height:4px;border-radius:2px;background:#d4d4d8"></span></span><span style="color:#71717a">2/4</span></span><span style="color:#71717a">iteration — segment 14×4px r2, gap 3px, fill = status.fg, empty = border.default</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="display:flex;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:#b45309;border:1px solid #a1a1aa"></span><span style="width:6px;height:6px;border-radius:50%;background:#b45309;border:1px solid #a1a1aa"></span><span style="width:6px;height:6px;border-radius:50%;background:transparent;border:1px solid #a1a1aa"></span></span><span style="color:#71717a">1/2</span></span><span style="color:#71717a">attempt — dot 6px, fill 0..n; amber when attempt&gt;0 (a retry already happened)</span>
+    </div>
+  </div>
+
+  <!-- timeline + gates -->
+  <div style="margin-bottom:44px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">4 · Iteration timeline &amp; gate checklist</div>
+    <div style="font-size:12.5px;color:#71717a;margin-bottom:16px;max-width:640px;line-height:1.6">Timeline node = numbered 22px circle in verdict color; rail 1px border.default. Each entry: executor summary (body/secondary) → reviewer note (2px quote rule, muted, prefixed “reviewer:”) → Pi trace link (mono 11px, external ↗). A dashed node marks the in-progress iteration. Gate rows: glyph + mono check name + state; failed rows get a 6% red tint; pending is colorless. Gates run after reviewer approval — the summary line states x/n passed.</div>
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start">
+      <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:18px 20px">
+        <div style="display:grid;grid-template-columns:26px 1fr;gap:0 14px">
+          <div style="display:flex;flex-direction:column;align-items:center"><span style="width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10.5px;background:rgba(37,99,235,0.10);border:1px solid rgba(37,99,235,0.28);color:#2563eb">1</span><span style="width:1px;flex:1;background:#d4d4d8"></span></div>
+          <div style="padding-bottom:22px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px"><span style="font-size:12.5px;font-weight:500">iteration 1</span><span style="display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:4px;font-family:'Geist Mono',monospace;font-size:10.5px;background:rgba(37,99,235,0.10);border:1px solid rgba(37,99,235,0.28);color:#2563eb">↺ revise</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a;margin-left:auto">52m ago</span></div>
+            <div style="font-size:12.5px;color:#52525b;line-height:1.55;margin-bottom:6px">Executor output summary — one to two sentences, plain language.</div>
+            <div style="border-left:2px solid #d4d4d8;padding:2px 0 2px 10px;font-size:12px;color:#71717a;line-height:1.5;margin-bottom:7px"><span style="color:#71717a">reviewer:</span> Verdict notes, verbatim from the reviewer.</div>
+            <a href="#">pi://trace/8f3a92c1 ↗</a>
+          </div>
+          <span style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10.5px;border:1px dashed #a1a1aa;color:#71717a;justify-self:center">2</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a;align-self:center">iteration 2 in progress — executor working</span>
+        </div>
+      </div>
+      <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px">
+        <div style="font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a;margin-bottom:12px">gate checks</div>
+        <div style="display:flex;flex-direction:column;gap:2px;font-family:'Geist Mono',monospace;font-size:12px">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px"><span style="width:14px;text-align:center;color:#059669">✓</span><span style="color:#3f3f46;flex:1">competitors≥5</span><span style="font-size:10.5px;color:#059669">pass</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px;background:rgba(220,38,38,0.06)"><span style="width:14px;text-align:center;color:#dc2626">✕</span><span style="color:#3f3f46;flex:1">deploy_200</span><span style="font-size:10.5px;color:#dc2626">fail</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px"><span style="width:14px;text-align:center;color:#71717a">○</span><span style="color:#3f3f46;flex:1">lighthouse≥85</span><span style="font-size:10.5px;color:#71717a">pending</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- data table + live -->
+  <div style="margin-bottom:44px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">5 · Data table &amp; live-update affordances</div>
+    <div style="font-size:12.5px;color:#71717a;margin-bottom:16px;max-width:680px;line-height:1.6">CSS grid rows, fixed 41px height, fixed column template — SSE patches change cell content in place, so nothing ever reflows or reorders while connected (re-sorting happens only on reconnect/refresh). On patch: row bg flashes liveFlash then eases out over 800ms; the last-event timestamp renders link-blue for 2 minutes. Relative timestamps re-render every 10s. Header + all data cells: mono 10.5–11.5px; entity names are the only sans cells.</div>
+    <div style="border:1px solid #1a1a1e;border-radius:8px;overflow:hidden;background:#ffffff">
+      <div style="display:grid;grid-template-columns:215px 145px 155px 130px 90px 100px 1fr;gap:0 16px;padding:0 16px 0 19px;height:34px;align-items:center;border-bottom:1px solid #1a1a1e;background:#fafafa;font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:#71717a"><span>engagement</span><span>status</span><span>active loop</span><span>iteration</span><span>attempt</span><span>last event</span><span>last note</span></div>
+      <div style="display:grid;grid-template-columns:215px 145px 155px 130px 90px 100px 1fr;gap:0 16px;padding:0 16px;height:41px;align-items:center;border-left:3px solid transparent;background:rgba(37,99,235,0.09)">
+        <span style="display:flex;flex-direction:column;line-height:1.25"><span style="font-size:12.5px;font-weight:500">Cobalt Legal</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a">eng_0141</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;width:fit-content;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(37,99,235,0.10);border:1px solid rgba(37,99,235,0.28);color:#2563eb">◔ running</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#52525b">company-research</span>
+        <span style="display:flex;align-items:center;gap:8px"><span style="display:flex;gap:3px"><span style="width:14px;height:4px;border-radius:2px;background:#2563eb"></span><span style="width:14px;height:4px;border-radius:2px;background:#2563eb"></span><span style="width:14px;height:4px;border-radius:2px;background:#d4d4d8"></span><span style="width:14px;height:4px;border-radius:2px;background:#d4d4d8"></span></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">2/4</span></span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">0/2</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#2563eb">4s ago</span>
+        <span style="font-size:12px;color:#71717a">← row just patched: liveFlash bg, blue timestamp</span>
+      </div>
+      <div style="display:grid;grid-template-columns:215px 145px 155px 130px 90px 100px 1fr;gap:0 16px;padding:0 16px;height:41px;align-items:center;border-left:3px solid #b45309;background:rgba(217,119,6,0.04)">
+        <span style="display:flex;flex-direction:column;line-height:1.25"><span style="font-size:12.5px;font-weight:500">Meridian Dental</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a">eng_0142</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;width:fit-content;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(217,119,6,0.12);border:1px solid rgba(217,119,6,0.35);color:#b45309">⚑ needs_human</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#52525b">website</span>
+        <span style="display:flex;align-items:center;gap:8px"><span style="display:flex;gap:3px"><span style="width:14px;height:4px;border-radius:2px;background:#b45309"></span><span style="width:14px;height:4px;border-radius:2px;background:#b45309"></span><span style="width:14px;height:4px;border-radius:2px;background:#b45309"></span><span style="width:14px;height:4px;border-radius:2px;background:#d4d4d8"></span></span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">3/4</span></span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">1/2</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#71717a">14m ago</span>
+        <span style="font-size:12px;color:#71717a">← needs_human: amber accent + 4% tint, persistent</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- states + read-only -->
+  <div>
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">6 · States &amp; the read-only contract</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:16px">
+      <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px"><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a;margin-bottom:10px">loading</div><div style="font-size:12px;color:#52525b;line-height:1.6">Skeleton rows at final row height (no jump on data arrival), pulsing at 1.6s. Footer shows the literal request: <span style="font-family:'Geist Mono',monospace;color:#71717a">GET /api/snapshot …</span></div></div>
+      <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px"><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a;margin-bottom:10px">empty</div><div style="font-size:12px;color:#52525b;line-height:1.6">Dashed border, queued-gray glyph, one sentence saying what will appear and who puts it there. Failures-empty is the one celebratory state: <span style="color:#059669;font-family:'Geist Mono',monospace">✓ nothing blocked</span>.</div></div>
+      <div style="border:1px solid #1a1a1e;border-radius:8px;background:#ffffff;padding:16px 18px"><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#71717a;margin-bottom:10px">disconnected</div><div style="font-size:12px;color:#52525b;line-height:1.6">Red global banner + sidebar indicator flips to <span style="color:#dc2626;font-family:'Geist Mono',monospace">disconnected</span> with the close timestamp. Data stays visible, labeled as a snapshot; simulation of freshness stops (timestamps keep aging honestly).</div></div>
+    </div>
+    <div style="margin-top:16px;font-size:12.5px;color:#71717a;line-height:1.7;max-width:720px">Read-only contract: the interface contains zero buttons. Interactions are navigation (rows, cards, breadcrumbs) and external links (Pi traces, repos, live sites — always suffixed ↗). Escalations are surfaced, never actioned here; the sidebar footer states the contract explicitly. Any future write surface is a different product.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

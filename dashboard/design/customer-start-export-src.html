@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#fafafa">
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><rect width="120" height="120" fill="#fafafa"/><circle cx="60" cy="54" r="26" fill="#18181b"/><rect x="50" y="46" width="4" height="12" rx="2" fill="#fafafa"/><rect x="62" y="49" width="4" height="12" rx="2" fill="#fafafa"/><rect x="26" y="92" width="68" height="12" rx="6" fill="#e4e4e7"/></svg>
+</template>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#fafafa}
+  a{color:#2563eb;text-decoration:none}a:hover{color:#1d4ed8;text-decoration:underline}
+  input::placeholder{color:#a1a1aa}
+  @keyframes twFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  @keyframes twBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(0.1)}}
+  @keyframes twOrbit{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  @keyframes twSweep{0%{left:-40%}100%{left:110%}}
+  @keyframes twFade{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
+</style>
+</helmet>
+<div style="width:1440px;height:900px;background:#fafafa;color:#18181b;font-family:Geist,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;position:relative" data-screen-label="Customer start">
+  <sc-if value="{{ showStart }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:0;width:640px;animation:twFade .5s ease">
+      <div style="font-size:40px;font-weight:600;letter-spacing:-.02em;margin-bottom:10px">Meet tenwhy</div>
+      <div style="font-size:16px;color:#71717a;margin-bottom:64px;text-align:center;max-width:440px;line-height:1.55">It researches your business and your competitors, then builds and launches your website. You only approve.</div>
+      <div style="width:120px;height:120px;border-radius:50%;background:#18181b;position:relative;margin-bottom:56px;animation:twFloat 4s ease-in-out infinite">
+        <span style="position:absolute;left:34px;top:52px;width:9px;height:24px;border-radius:5px;background:#fafafa;animation:twBlink 5s ease-in-out infinite"></span>
+        <span style="position:absolute;left:58px;top:58px;width:9px;height:24px;border-radius:5px;background:#fafafa;animation:twBlink 5s ease-in-out .1s infinite"></span>
+      </div>
+      <div style="width:100%;background:#ffffff;border:1px solid #e4e4e7;border-radius:24px;box-shadow:0 8px 30px rgba(24,24,27,0.05);padding:22px 22px 18px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+        <input onChange="{{ onUrl }}" onKeyDown="{{ onKey }}" placeholder="yourcompany.com" style="border:none;outline:none;background:transparent;font-family:Geist,system-ui,sans-serif;font-size:18px;color:#18181b;width:100%"></input>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:13px;color:#a1a1aa">Start with your current site or just your company name</span>
+          <div onClick="{{ start }}" style="width:44px;height:44px;border-radius:50%;background:#18181b;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fafafa;font-size:18px" style-hover="background:#3f3f46">↑</div>
+        </div>
+      </div>
+      <div style="margin-top:48px;display:flex;gap:28px;font-family:'Geist Mono',monospace;font-size:11.5px;color:#a1a1aa"><span>research → review → build → launch</span><span>~20 minutes</span><span>nothing published without your ok</span></div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ showLoading }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;align-items:center;width:560px;animation:twFade .5s ease">
+      <div style="position:relative;width:170px;height:170px;margin-bottom:48px;display:flex;align-items:center;justify-content:center">
+        <span style="position:absolute;inset:0;border-radius:50%;border:2px solid #e4e4e7;border-top-color:#18181b;animation:twOrbit 1.8s linear infinite"></span>
+        <div style="width:110px;height:110px;border-radius:50%;background:#18181b;position:relative;animation:twFloat 4s ease-in-out infinite">
+          <span style="position:absolute;left:31px;top:47px;width:8px;height:22px;border-radius:4px;background:#fafafa;animation:twBlink 3.5s ease-in-out infinite"></span>
+          <span style="position:absolute;left:53px;top:53px;width:8px;height:22px;border-radius:4px;background:#fafafa;animation:twBlink 3.5s ease-in-out .1s infinite"></span>
+        </div>
+      </div>
+      <div style="font-size:28px;font-weight:600;letter-spacing:-.015em;margin-bottom:8px;text-align:center">{{ phaseTitle }}</div>
+      <div style="font-size:14px;color:#71717a;margin-bottom:44px;text-align:center">{{ phaseSub }}</div>
+      <div style="width:420px;display:flex;flex-direction:column;gap:11px;margin-bottom:44px">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:12px;opacity:{{ s.op }}">
+            <span style="width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;background:{{ s.bg }};border:1px solid {{ s.border }};border-top-color:{{ s.borderTop }};color:{{ s.fg }};animation:{{ s.anim }}">{{ s.glyph }}</span>
+            <span style="font-size:14px;color:{{ s.textFg }};flex:1">{{ s.label }}</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#a1a1aa">{{ s.meta }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="width:420px;height:4px;border-radius:2px;background:#e4e4e7;overflow:hidden;position:relative;margin-bottom:20px">
+        <span style="position:absolute;top:0;bottom:0;left:0;width:{{ progressW }};background:#18181b;border-radius:2px;transition:width 1s ease"></span>
+        <span style="position:absolute;top:0;bottom:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent);animation:twSweep 1.6s linear infinite"></span>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#a1a1aa">{{ progressLabel }} · you can close this page — we'll email you when it's ready</div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ showResults }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:44px 0 56px;animation:twFade .5s ease">
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:28px">
+        <div style="width:52px;height:52px;border-radius:50%;background:#18181b;position:relative;margin-bottom:16px">
+          <span style="position:absolute;left:15px;top:22px;width:4px;height:11px;border-radius:2px;background:#fafafa;animation:twBlink 5s ease-in-out infinite"></span>
+          <span style="position:absolute;left:25px;top:25px;width:4px;height:11px;border-radius:2px;background:#fafafa;animation:twBlink 5s ease-in-out .1s infinite"></span>
+        </div>
+        <div style="font-size:30px;font-weight:600;letter-spacing:-.02em;margin-bottom:6px">{{ resultTitle }}</div>
+        <div style="font-size:14px;color:#71717a">{{ resultSub }}</div>
+      </div>
+      <div style="display:flex;background:#ffffff;border:1px solid #e4e4e7;border-radius:99px;padding:4px;gap:4px;margin-bottom:36px">
+        <div onClick="{{ goResearch }}" style="padding:8px 22px;border-radius:99px;font-size:13.5px;font-weight:500;cursor:pointer;background:{{ tabResBg }};color:{{ tabResFg }}">Research</div>
+        <div onClick="{{ goDesign }}" style="padding:8px 22px;border-radius:99px;font-size:13.5px;font-weight:500;cursor:pointer;background:{{ tabDesBg }};color:{{ tabDesFg }}">Website design</div>
+      </div>
+
+      <sc-if value="{{ showResearch }}" hint-placeholder-val="{{ true }}">
+        <div style="width:880px;display:flex;flex-direction:column;gap:16px">
+          <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:24px 28px">
+            <div style="font-size:13px;font-weight:600;color:#a1a1aa;margin-bottom:10px">About your business</div>
+            <div style="font-size:15px;line-height:1.65;color:#3f3f46">Meridian Dental is a family dental practice in Portland offering 11 treatments across general, cosmetic, and sedation dentistry. Your strongest differentiators are same-week appointments, sedation options, and accepting 9 insurance networks — more than any competitor we found.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:24px 28px">
+              <div style="font-size:13px;font-weight:600;color:#a1a1aa;margin-bottom:12px">What we learned</div>
+              <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;color:#3f3f46;line-height:1.5">
+                <span>✓ 11 treatments — but your current site lists only 6</span>
+                <span>✓ Patients mention "gentle" and "no wait" most in reviews</span>
+                <span>✓ 4 of 5 competitors hide their pricing entirely</span>
+                <span>✓ Nobody in your area offers online booking</span>
+              </div>
+            </div>
+            <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:24px 28px">
+              <div style="font-size:13px;font-weight:600;color:#a1a1aa;margin-bottom:12px">How your site will win</div>
+              <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;color:#3f3f46;line-height:1.5">
+                <span>1. Show all 11 treatments with plain-language pricing</span>
+                <span>2. Lead with sedation + same-week availability</span>
+                <span>3. Online booking front and center on every page</span>
+              </div>
+            </div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:24px 28px">
+            <div style="font-size:13px;font-weight:600;color:#a1a1aa;margin-bottom:14px">Your competitors</div>
+            <div style="display:grid;grid-template-columns:180px 130px 1fr 150px;gap:10px 20px;font-size:13.5px">
+              <span style="font-size:11.5px;color:#a1a1aa">practice</span><span style="font-size:11.5px;color:#a1a1aa">pricing shown</span><span style="font-size:11.5px;color:#a1a1aa">what they do well</span><span style="font-size:11.5px;color:#a1a1aa">online booking</span>
+              <sc-for list="{{ competitors }}" as="cp" hint-placeholder-count="5">
+                <span style="font-weight:500;color:#18181b">{{ cp.name }}</span><span style="color:{{ cp.priceFg }}">{{ cp.price }}</span><span style="color:#52525b">{{ cp.strength }}</span><span style="color:{{ cp.bookFg }}">{{ cp.booking }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showDesign }}" hint-placeholder-val="{{ false }}">
+        <div style="width:960px;display:flex;gap:20px;align-items:start">
+          <div style="flex:1;background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(24,24,27,0.07)">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f4f4f5;border-bottom:1px solid #e4e4e7">
+              <span style="width:10px;height:10px;border-radius:50%;background:#e4e4e7"></span><span style="width:10px;height:10px;border-radius:50%;background:#e4e4e7"></span><span style="width:10px;height:10px;border-radius:50%;background:#e4e4e7"></span>
+              <span style="margin-left:10px;background:#ffffff;border-radius:6px;padding:3px 14px;font-family:'Geist Mono',monospace;font-size:11px;color:#71717a">meridiandental.com — draft</span>
+            </div>
+            <div style="padding:0">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid #f4f4f5">
+                <span style="font-weight:600;font-size:15px;color:#134e4a">Meridian Dental</span>
+                <span style="display:flex;gap:18px;font-size:12px;color:#71717a;align-items:center">Services · Team · Pricing · Contact<span style="background:#134e4a;color:#ffffff;border-radius:99px;padding:6px 14px;font-weight:500">Book online</span></span>
+              </div>
+              <div style="padding:52px 28px 44px;text-align:center;background:linear-gradient(180deg,#f0fdfa,#ffffff)">
+                <div style="font-size:30px;font-weight:600;letter-spacing:-.02em;color:#134e4a;margin-bottom:10px">Gentle dentistry, same-week appointments</div>
+                <div style="font-size:14px;color:#71717a;max-width:400px;margin:0 auto 22px;line-height:1.6">All 11 treatments with clear pricing. Sedation available. 9 insurance networks accepted.</div>
+                <span style="display:inline-block;background:#134e4a;color:#ffffff;border-radius:99px;padding:10px 26px;font-size:13.5px;font-weight:500">Book your visit</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:0 28px 36px">
+                <div style="border:1px solid #f4f4f5;border-radius:10px;padding:16px"><div style="font-weight:600;font-size:13px;margin-bottom:5px;color:#18181b">General &amp; family</div><div style="font-size:12px;color:#71717a;line-height:1.5">Cleanings, exams, fillings — from $95</div></div>
+                <div style="border:1px solid #f4f4f5;border-radius:10px;padding:16px"><div style="font-weight:600;font-size:13px;margin-bottom:5px;color:#18181b">Cosmetic</div><div style="font-size:12px;color:#71717a;line-height:1.5">Whitening, veneers, aligners — from $240</div></div>
+                <div style="border:1px solid #f4f4f5;border-radius:10px;padding:16px"><div style="font-weight:600;font-size:13px;margin-bottom:5px;color:#18181b">Sedation</div><div style="font-size:12px;color:#71717a;line-height:1.5">Anxiety-free visits — the only practice nearby</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="width:250px;display:flex;flex-direction:column;gap:16px">
+            <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:20px 22px">
+              <div style="font-size:13px;font-weight:600;color:#a1a1aa;margin-bottom:12px">Your 6 pages</div>
+              <div style="display:flex;flex-direction:column;gap:9px;font-size:13.5px;color:#3f3f46">
+                <span>✓ Home</span><span>✓ Services — all 11 treatments</span><span>✓ Team</span><span>✓ Pricing</span><span>✓ Contact</span><span>✓ Book online</span>
+              </div>
+            </div>
+            <div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:20px 22px">
+              <div style="font-size:13px;font-weight:600;color:#a1a1aa;margin-bottom:10px">Built from your research</div>
+              <div style="font-size:13px;color:#71717a;line-height:1.6">Every claim on the site is sourced from the research — nothing invented. Pricing shown because competitors hide theirs.</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;gap:12px;margin-top:36px">
+        <div style="background:#18181b;color:#fafafa;border-radius:99px;padding:13px 34px;font-size:14.5px;font-weight:500;cursor:pointer" style-hover="background:#3f3f46">{{ approveLabel }}</div>
+        <div style="background:#f4f4f5;color:#18181b;border-radius:99px;padding:13px 34px;font-size:14.5px;font-weight:500;cursor:pointer" style-hover="background:#e4e4e7">Request changes</div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1440, &quot;height&quot;: 900 },
+  &quot;screen&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;start&quot;, &quot;options&quot;: [&quot;start&quot;, &quot;loading&quot;, &quot;research&quot;, &quot;design&quot;], &quot;tsType&quot;: &quot;string&quot; }
+}">
+class Component extends DCLogic {
+  state = { screen: null, url: '', stepIdx: 0 };
+  PHASES = [
+    { title: 'Reading your website', sub: 'Learning what you do, who you serve, and how you talk about it.' },
+    { title: 'Researching your market', sub: 'Profiling competitors and comparing offers, pricing, and positioning.' },
+    { title: 'Planning your site', sub: 'Turning the research into a sitemap and page briefs.' },
+    { title: 'Writing and building', sub: 'Drafting copy and assembling pages. A reviewer checks every draft.' },
+    { title: 'Final checks', sub: 'Speed, links, and deploy checks before anything goes live.' }
+  ];
+  STEP_LABELS = ['Read your website', 'Research competitors', 'Plan the sitemap', 'Write & build pages', 'Run final checks'];
+  componentDidMount() {
+    this.iv = setInterval(() => {
+      if (this.cur() !== 'loading') return;
+      this.setState(s => s.stepIdx >= 4 ? { screen: 'research', stepIdx: 0 } : { stepIdx: s.stepIdx + 1 });
+    }, 3500);
+  }
+  componentWillUnmount() { clearInterval(this.iv); }
+  cur() { return this.state.screen ?? this.props.screen ?? 'start'; }
+  renderVals() {
+    const screen = this.cur();
+    const idx = this.state.stepIdx;
+    const ph = this.PHASES[idx];
+    const steps = this.STEP_LABELS.map((label, i) => {
+      const done = i < idx, active = i === idx;
+      return {
+        label, op: done || active ? 1 : 0.45,
+        glyph: done ? '✓' : active ? '' : '',
+        bg: done ? '#18181b' : 'transparent',
+        border: done ? '#18181b' : '#d4d4d8',
+        borderTop: done ? '#18181b' : active ? '#18181b' : '#d4d4d8',
+        anim: active ? 'twOrbit 1.2s linear infinite' : 'none',
+        fg: done ? '#fafafa' : '#18181b',
+        textFg: done || active ? '#18181b' : '#71717a',
+        meta: done ? 'done' : active ? 'in progress' : ''
+      };
+    });
+    const isRes = screen === 'research', isDes = screen === 'design';
+    return {
+      showStart: screen === 'start', showLoading: screen === 'loading',
+      showResults: isRes || isDes, showResearch: isRes, showDesign: isDes,
+      resultTitle: isDes ? 'Your website draft' : 'Your research is ready',
+      resultSub: isDes ? 'Drafted, reviewed, and checked — nothing goes live until you approve.' : 'Everything below was gathered and verified by tenwhy this morning.',
+      goResearch: () => this.setState({ screen: 'research' }),
+      goDesign: () => this.setState({ screen: 'design' }),
+      tabResBg: isRes ? '#18181b' : 'transparent', tabResFg: isRes ? '#fafafa' : '#71717a',
+      tabDesBg: isDes ? '#18181b' : 'transparent', tabDesFg: isDes ? '#fafafa' : '#71717a',
+      approveLabel: isDes ? 'Approve & launch' : 'Looks right — continue',
+      competitors: [
+        { name: 'Pearl District Dental', price: 'hidden', priceFg: '#a1a1aa', strength: 'Strong reviews, modern brand', booking: 'phone only', bookFg: '#a1a1aa' },
+        { name: 'Rose City Smiles', price: 'hidden', priceFg: '#a1a1aa', strength: 'Large team, 3 locations', booking: 'phone only', bookFg: '#a1a1aa' },
+        { name: 'Hawthorne Family Dental', price: 'partial', priceFg: '#b45309', strength: 'Kids-focused positioning', booking: 'form', bookFg: '#a1a1aa' },
+        { name: 'Alberta Dental Co.', price: 'hidden', priceFg: '#a1a1aa', strength: 'Cosmetic before/after gallery', booking: 'phone only', bookFg: '#a1a1aa' },
+        { name: 'Division Dental Studio', price: 'hidden', priceFg: '#a1a1aa', strength: 'Late hours', booking: 'none', bookFg: '#a1a1aa' }
+      ],
+      onUrl: e => this.setState({ url: e.target.value }),
+      onKey: e => { if (e.key === 'Enter') this.setState({ screen: 'loading', stepIdx: 0 }); },
+      start: () => this.setState({ screen: 'loading', stepIdx: 0 }),
+      phaseTitle: ph.title, phaseSub: ph.sub, steps,
+      progressW: Math.round(8 + idx * 22) + '%',
+      progressLabel: 'step ' + (idx + 1) + ' of 5'
+    };
+  }
+}
+</script>
+</body>
+</html>
