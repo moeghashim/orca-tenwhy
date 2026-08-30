@@ -46,6 +46,22 @@ class FixtureHandler(BaseHTTPRequestHandler):
             body, status = SECRET_HTML, 200
         elif self.path in ("/wild?q=1", "/exact", "/exact/child"):
             body, status = OK_HTML, 200
+        elif self.path.startswith("/redir-"):
+            port = self.server.server_address[1]
+            target = {
+                "/redir-ok": "/ok.html",
+                "/redir-blocked": "/blocked/secret.html",
+                "/redir-offhost": f"http://localhost:{port}/ok.html",
+                "/redir-loop": "/redir-loop",
+            }.get(self.path)
+            if target is None:
+                body, status = b"missing", 404
+            else:
+                self.send_response(302)
+                self.send_header("Location", target)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         else:
             body, status = b"missing", 404
         self.send_response(status)
@@ -53,6 +69,18 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+class ForbiddenRobotsHandler(FixtureHandler):
+    """A host whose robots.txt answers 403 — must be treated as full disallow."""
+
+    def do_GET(self):
+        if self.path == "/robots.txt":
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().do_GET()
 
 
 class ScrapeTests(unittest.TestCase):
@@ -66,6 +94,10 @@ class ScrapeTests(unittest.TestCase):
         cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
         cls.thread.start()
         cls.base = f"http://127.0.0.1:{cls.port}"
+        cls.httpd2 = ThreadingHTTPServer(("127.0.0.1", 0), ForbiddenRobotsHandler)
+        cls.port2 = cls.httpd2.server_address[1]
+        threading.Thread(target=cls.httpd2.serve_forever, daemon=True).start()
+        cls.base2 = f"http://127.0.0.1:{cls.port2}"
         last = REPO_ROOT / "state" / "scrape" / "127.0.0.1.last"
         if last.exists():
             last.unlink()
@@ -74,6 +106,8 @@ class ScrapeTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        cls.httpd2.shutdown()
+        cls.httpd2.server_close()
 
     def _run(self, url: str, extra: list[str] | None = None) -> subprocess.CompletedProcess:
         out_dir = tempfile.mkdtemp(dir=self.tmpdir)
@@ -158,6 +192,42 @@ class ScrapeTests(unittest.TestCase):
                 self.assertEqual(payload["reason"], "robots", url)
             else:
                 self.assertEqual(proc.returncode, 0, url + "\n" + proc.stderr)
+
+    def _refusal(self, proc, reason: str):
+        self.assertEqual(proc.returncode, 3, proc.stderr + proc.stdout)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertTrue(payload["refused"])
+        self.assertEqual(payload["reason"], reason)
+        return payload
+
+    def test_redirect_followed_with_final_url(self):
+        proc = self._run(f"{self.base}/redir-ok")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["http_status"], 200)
+        with open(payload["content_path"], encoding="utf-8") as fh:
+            extracted = json.load(fh)
+        self.assertTrue(extracted["final_url"].endswith("/ok.html"))
+        self.assertEqual(extracted["redirect_chain"], [f"{self.base}/redir-ok"])
+        self.assertEqual(extracted["title"], "OK Page")
+
+    def test_redirect_into_robots_blocked_is_refused(self):
+        payload = self._refusal(self._run(f"{self.base}/redir-blocked"), "robots")
+        self.assertTrue(payload["at"].endswith("/blocked/secret.html"))
+
+    def test_redirect_offhost_hits_allowlist(self):
+        payload = self._refusal(
+            self._run(f"{self.base}/redir-offhost", ["--allowlist", "127.0.0.1"]), "allowlist"
+        )
+        self.assertTrue(payload["at"].startswith("http://localhost:"))
+
+    def test_redirect_loop_fails(self):
+        proc = self._run(f"{self.base}/redir-loop")
+        self.assertEqual(proc.returncode, 4, proc.stdout + proc.stderr)
+        self.assertIn("too many redirects", proc.stderr)
+
+    def test_robots_403_means_disallow(self):
+        self._refusal(self._run(f"{self.base2}/ok.html"), "robots_unavailable")
 
     def test_allowlist_refused(self):
         url = f"{self.base}/ok.html"

@@ -30,6 +30,11 @@ TEXT_MAX_CHARS = 200 * 1024
 EXIT_OK = 0
 EXIT_REFUSED = 3
 EXIT_ERROR = 4
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+MAX_REDIRECTS = 5
+# RFC 9309 §2.3.1.3–4: 401/403 and 5xx/unreachable robots.txt → assume full disallow;
+# 404 (and other 4xx) → no restrictions.
+ROBOTS_DISALLOW_STATUSES = {401, 403}
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DB = REPO_ROOT / "state" / "orchestrator.db"
@@ -86,20 +91,28 @@ def insert_scrape(
     )
 
 
-def refuse(conn: sqlite3.Connection, url: str, loop_run_id: str, reason: str) -> int:
+def refuse(
+    conn: sqlite3.Connection, url: str, loop_run_id: str, reason: str, at: str | None = None
+) -> int:
     engagement_id = lookup_engagement_id(conn, loop_run_id)
     insert_scrape(
         conn, loop_run_id=loop_run_id, url=url, http_status=None, content_path=None
     )
+    payload = {"url": url, "reason": reason}
+    if at and at != url:
+        payload["at"] = at  # refusal happened on a redirect hop
     insert_event(
         conn,
         engagement_id=engagement_id,
         loop_run_id=loop_run_id,
         kind="scrape_refused",
-        payload={"url": url, "reason": reason},
+        payload=payload,
     )
     conn.commit()
-    print(json.dumps({"url": url, "refused": True, "reason": reason}))
+    out = {"url": url, "refused": True, "reason": reason}
+    if "at" in payload:
+        out["at"] = at
+    print(json.dumps(out))
     return EXIT_REFUSED
 
 
@@ -156,36 +169,68 @@ def rate_limit(host: str) -> None:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
-def load_robots(url: str, out_dir: Path) -> tuple[str | None, bool]:
-    """Return (robots.txt body or None, unreachable)."""
+def load_robots(url: str, out_dir: Path) -> tuple[int | None, str]:
+    """Return (HTTP status or None on network error, body). Cached per host as JSON;
+    network errors are not cached so a transient failure is retried next time."""
     host = host_of(url)
-    cache = out_dir / "robots" / f"{safe_filename(host)}.txt"
+    cache = out_dir / "robots" / f"{safe_filename(host)}.json"
     cache.parent.mkdir(parents=True, exist_ok=True)
     if cache.exists():
-        return cache.read_text(encoding="utf-8", errors="replace"), False
+        try:
+            data = json.loads(cache.read_text(encoding="utf-8"))
+            return data.get("status"), str(data.get("body", ""))
+        except (ValueError, OSError):
+            pass
     robots_url = origin_of(url) + "/robots.txt"
     req = urllib.request.Request(robots_url, headers={"User-Agent": USER_AGENT})
+    status: int | None = None
+    body = ""
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            status = int(resp.status)
             body = resp.read().decode("utf-8", errors="replace")
-        cache.write_text(body, encoding="utf-8")
-        return body, False
     except urllib.error.HTTPError as exc:
-        cache.write_text("", encoding="utf-8")
-        return None, True if exc.code >= 400 else True
+        status = int(exc.code)
     except Exception:
-        return None, True
+        status = None
+    if status is not None:
+        cache.write_text(json.dumps({"status": status, "body": body}), encoding="utf-8")
+    return status, body
 
 
 def robots_allows(url: str, out_dir: Path) -> tuple[bool, str | None]:
-    body, unreachable = load_robots(url, out_dir)
-    if unreachable or body is None:
-        return True, "robots_unreachable"
+    """(allowed, note). note is a refusal reason when not allowed, or an informational
+    tag ("robots_absent") when allowed without rules."""
+    status, body = load_robots(url, out_dir)
+    if status is None or status >= 500 or status in ROBOTS_DISALLOW_STATUSES:
+        return False, "robots_unavailable"
+    if status >= 400:
+        return True, "robots_absent"
     # protego (Google's robots.txt spec: `*` and `$` wildcards, blank lines inside a
     # record) — urllib.robotparser silently drops every rule after a blank line that
     # follows `User-agent: *`, which allowed disallowed GitHub paths (found 2026-08-30).
     allowed = Protego.parse(body).can_fetch(url, USER_AGENT)
-    return bool(allowed), None
+    return bool(allowed), (None if allowed else "robots")
+
+
+def guard(url: str, allowed_hosts: set[str] | None, out_dir: Path) -> tuple[str | None, str | None]:
+    """Run the allowlist + robots guardrails for one URL (called on every redirect hop).
+    Returns (refusal_reason, robots_note)."""
+    host = host_of(url)
+    if allowed_hosts is not None and host not in allowed_hosts:
+        return "allowlist", None
+    allowed, note = robots_allows(url, out_dir)
+    if not allowed:
+        return note or "robots", None
+    return None, note
+
+
+def header(response, name: str) -> str | None:
+    headers = getattr(response, "headers", None) or {}
+    for key, value in dict(headers).items():
+        if str(key).lower() == name.lower():
+            return str(value)
+    return None
 
 
 def normalize_text(text: str) -> str:
@@ -195,7 +240,7 @@ def normalize_text(text: str) -> str:
     return collapsed
 
 
-def extract(response, url: str, robots_note: str | None) -> dict:
+def extract(response, url: str, robots_note: str | None, redirect_chain: list[str] | None = None) -> dict:
     title_els = response.css("title") if hasattr(response, "css") else []
     title = ""
     if title_els:
@@ -226,6 +271,8 @@ def extract(response, url: str, robots_note: str | None) -> dict:
     }
     if robots_note:
         payload["robots_note"] = robots_note
+    if redirect_chain:
+        payload["redirect_chain"] = redirect_chain
     return payload
 
 
@@ -233,7 +280,7 @@ def fetch(url: str):
     return Fetcher.get(
         url,
         timeout=TIMEOUT_S,
-        follow_redirects=True,
+        follow_redirects=False,  # hops are walked in main() so every hop is guarded
         stealthy_headers=False,
         headers={"User-Agent": USER_AGENT},
     )
@@ -271,26 +318,43 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             return fail(conn, url, loop_run_id, str(exc))
 
+        allowed_hosts = None
         if args.allowlist:
             allowed_hosts = {h.strip().lower() for h in args.allowlist.split(",") if h.strip()}
-            if host not in allowed_hosts:
-                return refuse(conn, url, loop_run_id, "allowlist")
 
-        allowed, robots_note = robots_allows(url, out_dir)
-        if not allowed:
-            return refuse(conn, url, loop_run_id, "robots")
-
-        try:
-            rate_limit(host)
-            response = fetch(url)
-        except Exception as exc:
-            return fail(conn, url, loop_run_id, f"{type(exc).__name__}: {exc}")
+        # Walk redirects manually: allowlist, robots and the per-host rate limit are
+        # re-applied on every hop so a redirect cannot bypass a guardrail.
+        current = url
+        redirect_chain: list[str] = []
+        response = None
+        robots_note = None
+        for hop in range(MAX_REDIRECTS + 1):
+            try:
+                hop_host = host_of(current)
+            except ValueError as exc:
+                return fail(conn, url, loop_run_id, str(exc))
+            reason, robots_note = guard(current, allowed_hosts, out_dir)
+            if reason:
+                return refuse(conn, url, loop_run_id, reason, at=current)
+            try:
+                rate_limit(hop_host)
+                response = fetch(current)
+            except Exception as exc:
+                return fail(conn, url, loop_run_id, f"{type(exc).__name__}: {exc}")
+            status_code = int(getattr(response, "status", 0) or 0)
+            location = header(response, "Location") if status_code in REDIRECT_STATUSES else None
+            if not location:
+                break
+            if hop == MAX_REDIRECTS:
+                return fail(conn, url, loop_run_id, f"too many redirects (> {MAX_REDIRECTS})")
+            redirect_chain.append(current)
+            current = urllib.parse.urljoin(current, location)
 
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
         html_path = out_dir / f"{digest}.html"
         json_path = out_dir / f"{digest}.json"
         html_path.write_bytes(raw_html(response))
-        payload = extract(response, url, robots_note)
+        payload = extract(response, url, robots_note, redirect_chain)
         json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         content_path = str(json_path)
         http_status = payload["http_status"]
