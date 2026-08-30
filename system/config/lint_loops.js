@@ -20,9 +20,28 @@ assert(doc?.caps?.retry_cap === 2, "caps.retry_cap === 2");
 
 const roles = doc?.roles ?? {};
 assert(Object.keys(roles).length > 0, "roles is a non-empty object");
+
+// Exact model strings recorded in system/config/environment.md (P0.1–P0.4).
+// The executor id is the Grok CLI "latest" (P0.2); its Pi/xai catalog id is
+// re-verified after `/login xai` (environment.md P0.1 PENDING) and this table
+// must be updated in the same commit as loops.yaml if it differs.
+const EXPECTED_MODELS = {
+  orchestrator: "claude-fable-5",
+  reviewer: "gpt-5.6-luna",
+  executor: "grok-4.6",
+};
+const REQUIRED_ROLES = Object.keys(EXPECTED_MODELS);
+for (const name of REQUIRED_ROLES) {
+  assert(roles[name], `roles.${name} is defined`);
+}
 for (const [name, role] of Object.entries(roles)) {
-  assert(typeof role?.model === "string" && role.model.length > 0, `roles.${name} has model`);
+  assert(
+    role?.model === EXPECTED_MODELS[name],
+    `roles.${name}.model === ${JSON.stringify(EXPECTED_MODELS[name])} (got ${JSON.stringify(role?.model)})`,
+  );
   assert(role?.auth === "oauth", `roles.${name}.auth === oauth`);
+  const level = role?.effort ?? role?.thinking;
+  assert(level === "high", `roles.${name} effort/thinking === high (got ${JSON.stringify(level)})`);
 }
 
 const loops = doc?.loops ?? {};
