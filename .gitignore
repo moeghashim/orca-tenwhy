@@ -18,5 +18,7 @@ state/*.db-shm
 state/scrapes/
 state/scrape/
 state/pi-sessions/
+state/customers/
+state/remotes/
 system/tools/.venv/
 *.tar.gz

@@ -76,7 +76,7 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P8.1 | ⬜ | | | |
+| P8.1 | 🟡 | `node --test system/orchestrator/test_customer_repo.mjs` → `✔ generated repo matches §8 tree, lints, and local origin ls-remote exits 0` `pass 1` `fail 0` (exit 0). | _pending_ | _pending_ |
 
 ## Phase 6 — Ops dashboard
 
