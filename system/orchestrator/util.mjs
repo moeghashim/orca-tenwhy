@@ -61,3 +61,9 @@ export function openDb(dbPath) {
   db.exec("PRAGMA foreign_keys = ON");
   return db;
 }
+
+export async function loadLoopsConfig() {
+  const { default: yaml } = await import("yaml");
+  const text = fs.readFileSync(path.join(ROOT, "system/config/loops.yaml"), "utf8");
+  return yaml.parse(text);
+}

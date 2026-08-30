@@ -4,13 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createPiAdapter } from "./adapters/pi.mjs";
+import { prefixedId, utcNow } from "./util.mjs";
+
+export { utcNow };
 
 const VALID_VERDICTS = new Set(["revise", "approve", "reject", "escalate"]);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-export function utcNow() {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-}
 
 export function lastJsonObject(text) {
   const src = String(text ?? "");
@@ -81,6 +80,19 @@ function buildExecutorPrompt({ loopName, n, adjustedInstructions, previousNotes,
   return parts.join("\n");
 }
 
+const REVIEWER_CONTENT_MAX = 60 * 1024;
+
+export function readExecutorOutput(outputPath, max = REVIEWER_CONTENT_MAX) {
+  // The reviewer runs with no tools, so the executor's work must be inlined verbatim.
+  try {
+    const text = fs.readFileSync(outputPath, "utf8");
+    if (text.length <= max) return text;
+    return `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`;
+  } catch {
+    return "(executor output file missing)";
+  }
+}
+
 function buildReviewerPrompt({ loopName, n, executorOutputPath, workdir }) {
   const base =
     loadPrompt(loopName, "reviewer") ??
@@ -89,9 +101,34 @@ function buildReviewerPrompt({ loopName, n, executorOutputPath, workdir }) {
     base,
     "",
     `Iteration ${n}.`,
-    `Executor output: ${executorOutputPath}`,
+    `Executor output path: ${executorOutputPath}`,
     `Workdir: ${workdir}`,
+    "",
+    "=== EXECUTOR OUTPUT (verbatim) ===",
+    readExecutorOutput(executorOutputPath),
+    "=== END EXECUTOR OUTPUT ===",
   ].join("\n");
+}
+
+function failRunOnError(db, { engagementId, loopRunId, n, role, err, iterations, traceRef }) {
+  // Infrastructure failure (model process exited non-zero, OAuth, missing binary…):
+  // not a quality verdict, so it is neither an iteration nor a retryable gate_failed —
+  // a human must look. The run is closed as needs_human with the error recorded.
+  const message = err instanceof Error ? err.message : String(err);
+  insertEvent(db, {
+    engagementId,
+    loopRunId,
+    kind: "loop_run.error",
+    payload: { n, role, message: message.slice(0, 4000), traceRef: err?.traceRef ?? traceRef ?? null },
+  });
+  finishRun(db, { loopRunId, status: "needs_human", traceRef: err?.traceRef ?? traceRef ?? null });
+  insertEvent(db, {
+    engagementId,
+    loopRunId,
+    kind: "loop_run.needs_human",
+    payload: { n, reason: "adapter_error", message: message.slice(0, 1000) },
+  });
+  return { loopRunId, status: "needs_human", iterations, gateChecks: [], error: message };
 }
 
 function insertEvent(db, { engagementId, loopRunId, kind, payload }) {
@@ -109,6 +146,7 @@ function finishRun(db, { loopRunId, status, traceRef }) {
 export async function runLoop({
   db,
   dbPath = null,
+  loopRunId: existingId = null,
   loopName,
   engagementId,
   attempt = 0,
@@ -121,22 +159,37 @@ export async function runLoop({
 }) {
   db.exec("PRAGMA foreign_keys = ON");
   const cap = config?.caps?.iteration_cap ?? 4;
-  const loopRunId = randomUUID();
   const startedAt = utcNow();
-  db.prepare(
-    `INSERT INTO loop_runs (
-      id, engagement_id, loop_name, attempt, change_request_id, status,
-      pi_trace_ref, adjusted_instructions, started_at, finished_at
-    ) VALUES (?, ?, ?, ?, ?, 'running', NULL, ?, ?, NULL)`,
-  ).run(
-    loopRunId,
-    engagementId,
-    loopName,
-    attempt,
-    changeRequestId,
-    adjustedInstructions,
-    startedAt,
-  );
+  let loopRunId = existingId;
+  if (loopRunId) {
+    const existing = db.prepare("SELECT * FROM loop_runs WHERE id = ?").get(loopRunId);
+    if (!existing) throw new Error(`loop_run not found: ${loopRunId}`);
+    loopName = existing.loop_name;
+    engagementId = existing.engagement_id;
+    attempt = existing.attempt;
+    changeRequestId = existing.change_request_id ?? changeRequestId;
+    adjustedInstructions = existing.adjusted_instructions ?? adjustedInstructions;
+    db.prepare("UPDATE loop_runs SET status = 'running', started_at = ? WHERE id = ?").run(
+      startedAt,
+      loopRunId,
+    );
+  } else {
+    loopRunId = prefixedId("run");
+    db.prepare(
+      `INSERT INTO loop_runs (
+        id, engagement_id, loop_name, attempt, change_request_id, status,
+        pi_trace_ref, adjusted_instructions, started_at, finished_at
+      ) VALUES (?, ?, ?, ?, ?, 'running', NULL, ?, ?, NULL)`,
+    ).run(
+      loopRunId,
+      engagementId,
+      loopName,
+      attempt,
+      changeRequestId,
+      adjustedInstructions,
+      startedAt,
+    );
+  }
   insertEvent(db, {
     engagementId,
     loopRunId,
@@ -158,7 +211,9 @@ export async function runLoop({
       previousNotes,
       workdir,
     });
-    const execResult = await adapter.run({
+    let execResult;
+    try {
+      execResult = await adapter.run({
       role: "executor",
       loopName,
       n,
@@ -169,7 +224,10 @@ export async function runLoop({
       loopRunId,
       dbPath,
       config,
-    });
+      });
+    } catch (err) {
+      return failRunOnError(db, { engagementId, loopRunId, n, role: "executor", err, iterations, traceRef: lastExecutorTrace });
+    }
     lastExecutorTrace = execResult.traceRef;
     const outputPath = execResult.outputPath;
 
@@ -180,7 +238,9 @@ export async function runLoop({
       executorOutputPath: outputPath,
       workdir,
     });
-    const revResult = await adapter.run({
+    let revResult;
+    try {
+      revResult = await adapter.run({
       role: "reviewer",
       loopName,
       n,
@@ -191,9 +251,12 @@ export async function runLoop({
       loopRunId,
       dbPath,
       config,
-    });
+      });
+    } catch (err) {
+      return failRunOnError(db, { engagementId, loopRunId, n, role: "reviewer", err, iterations, traceRef: lastExecutorTrace });
+    }
     const parsed = parseReviewerVerdict(revResult.text);
-    const iterationId = randomUUID();
+    const iterationId = prefixedId("it");
     db.prepare(
       `INSERT INTO iterations (
         id, loop_run_id, n, executor_output_path, reviewer_verdict, reviewer_notes, pi_trace_ref, created_at
@@ -274,7 +337,7 @@ export async function runLoop({
   for (const check of gateChecks) {
     db.prepare(
       "INSERT INTO gate_checks (id, loop_run_id, check_name, passed, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run(randomUUID(), loopRunId, check.check_name, check.passed, check.detail, utcNow());
+    ).run(prefixedId("chk"), loopRunId, check.check_name, check.passed, check.detail, utcNow());
   }
   const allPassed = gateChecks.length > 0 && gateChecks.every((c) => c.passed === 1);
   const status = allPassed ? "gate_passed" : "gate_failed";
