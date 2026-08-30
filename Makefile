@@ -4,3 +4,4 @@
 verify:
 	bash system/db/test_schema.sh
 	node system/config/lint_loops.js
+	system/tools/.venv/bin/python system/tools/test_scrape.py

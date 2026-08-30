@@ -11,8 +11,12 @@
 node_modules/
 dist/
 state/orchestrator.db
+state/*.db
 state/*.db-journal
 state/*.db-wal
 state/*.db-shm
+state/scrapes/
+state/scrape/
+state/pi-sessions/
 system/tools/.venv/
 *.tar.gz
