@@ -6,5 +6,8 @@
   "engines": {
     "node": ">=20"
   },
-  "description": "tenwhy graph-of-loops system repo"
+  "description": "tenwhy graph-of-loops system repo",
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
 }

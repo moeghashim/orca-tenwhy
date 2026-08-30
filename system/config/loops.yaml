@@ -1,0 +1,28 @@
+version: 1
+caps:
+  iteration_cap: 4          # executor↔reviewer rounds per loop run
+  retry_cap: 2              # orchestrator retries (attempt 0..2)
+roles:
+  orchestrator: { cli: claude, model: claude-fable-5, effort: high, auth: oauth }
+  reviewer:     { harness: pi, provider: openai-codex, model: gpt-5.6-luna, thinking: high, auth: oauth }
+  executor:
+    harness: pi
+    provider: xai
+    model: grok-4.6  # TODO verify Pi xai catalog id after /login xai
+    thinking: high
+    auth: oauth
+loops:
+  company-research:
+    inputs: [idea, site_url]
+    tools: [scrape]
+    gate: system/gates/research_gate.py
+    outputs: [research/RESEARCH.json, research/SOURCES.md, company/]
+  website:
+    inputs: [research/RESEARCH.json]
+    depends_on: [company-research]
+    tools: []
+    gate: system/gates/website_gate.py
+    outputs: [brand/, website/]
+edges:
+  - from: company-research
+    to: website
