@@ -38,12 +38,41 @@ def urls_200(conn: sqlite3.Connection, loop_run_id: str) -> set[str]:
     return {r[0] for r in rows}
 
 
-def all_scrape_urls(conn: sqlite3.Connection, loop_run_id: str) -> list[str]:
+def scrape_status_label(http_status) -> str:
+    if http_status is None:
+        return "refused"
+    return str(http_status)
+
+
+def scrape_row_counts(conn: sqlite3.Connection, loop_run_id: str) -> dict[tuple[str, str], int]:
     rows = conn.execute(
-        "SELECT url FROM scrapes WHERE loop_run_id = ? ORDER BY url",
+        "SELECT url, http_status FROM scrapes WHERE loop_run_id = ?",
         (loop_run_id,),
     ).fetchall()
-    return [r[0] for r in rows]
+    counts: dict[tuple[str, str], int] = {}
+    for url, status in rows:
+        key = (url, scrape_status_label(status))
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def parse_source_rows(text: str) -> dict[tuple[str, str], int]:
+    counts: dict[tuple[str, str], int] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        url, status = cells[0], cells[1]
+        if not url or url.lower() == "url" or set(url) <= {"-", ":"}:
+            continue
+        if set(status) <= {"-", ":"}:
+            continue
+        key = (url, status)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def is_number(value) -> bool:
@@ -119,7 +148,13 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
         ideas_ok = len(good_ideas) >= 3
         ideas_detail = f"{len(good_ideas)} ideas with rationale"
         sources_text = sources_path.read_text(encoding="utf-8") if sources_path.is_file() else ""
-        missing = [u for u in all_scrape_urls(conn, loop_run_id) if u not in sources_text]
+        source_counts = parse_source_rows(sources_text)
+        scrape_counts = scrape_row_counts(conn, loop_run_id)
+        missing = []
+        for key, need in scrape_counts.items():
+            have = source_counts.get(key, 0)
+            if have < need:
+                missing.append(f"{key[0]}|{key[1]} x{need - have}")
         src_ok = not missing
         src_detail = "ok" if src_ok else "missing: " + ", ".join(missing)
         return [

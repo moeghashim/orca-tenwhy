@@ -113,7 +113,10 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
       );
       await fs.mkdir(sessionDir, { recursive: true });
       await fs.mkdir(workdir, { recursive: true });
-      const script = path.join(repoRoot, "system/loops", loopName, "run-pi.sh");
+      const script =
+        role === "reviewer"
+          ? path.join(repoRoot, "system/loops/_shared/run-pi-reviewer.sh")
+          : path.join(repoRoot, "system/loops", loopName, "run-pi.sh");
       const result = await withProviderLock(provider, () =>
         runPiScript({
           script,

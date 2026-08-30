@@ -343,7 +343,14 @@ export async function runLoop({
     if (typeof loopMod?.materialize === "function") {
       let mat;
       try {
-        mat = await loopMod.materialize({ outputPath, workdir, db, loopRunId });
+        mat = await loopMod.materialize({
+          outputPath,
+          workdir,
+          db,
+          loopRunId,
+          traceRef: execResult.traceRef,
+          now: utcNow(),
+        });
       } catch (err) {
         mat = { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
