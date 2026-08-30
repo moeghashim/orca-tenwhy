@@ -30,8 +30,8 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P1.1 | ✅ | `git ls-remote origin; echo exit=$?` → `815fda9056185f5d9de8a5ffd46e11407523be94	HEAD` / `815fda9056185f5d9de8a5ffd46e11407523be94	refs/heads/main` `exit=0`. `find . -path ./node_modules -prune -o -path ./.git -prune -o -type d -print \| sort` includes `./bin` `./dashboard` `./dashboard/design` `./dashboard/server` `./dashboard/web` `./state` `./system` `./system/config` `./system/db` `./system/gates` `./system/loops` `./system/loops/company-research` `./system/loops/website` `./system/orchestrator` `./system/tools` `./templates` `./templates/customer-repo` | _pending_ | _pending_ |
-| P1.2 | ⬜ | | | |
+| P1.1 | ✅ | `git ls-remote origin; echo exit=$?` → `815fda9056185f5d9de8a5ffd46e11407523be94	HEAD` / `815fda9056185f5d9de8a5ffd46e11407523be94	refs/heads/main` `exit=0`. `find . -path ./node_modules -prune -o -path ./.git -prune -o -type d -print \| sort` includes `./bin` `./dashboard` `./dashboard/design` `./dashboard/server` `./dashboard/web` `./state` `./system` `./system/config` `./system/db` `./system/gates` `./system/loops` `./system/loops/company-research` `./system/loops/website` `./system/orchestrator` `./system/tools` `./templates` `./templates/customer-repo` | `0784e9143b9f6105943f5288d779a3789b6cda66` | _pending_ |
+| P1.2 | ✅ | `bash system/db/test_schema.sh; echo exit=$?` → `PASS 1` `PASS 2` `PASS 3` `PASS 4` `PASS 5` `PASS 6` `PASS 7` `exit=0`. `make verify; echo exit=$?` → same 7 PASS, `exit=0`. | _pending_ | _pending_ |
 | P1.3 | ⬜ | | | |
 
 ## Phase 2 — Pi harness integration & tools
