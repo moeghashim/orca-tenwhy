@@ -22,3 +22,5 @@ state/customers/
 state/remotes/
 system/tools/.venv/
 *.tar.gz
+__pycache__/
+*.pyc
