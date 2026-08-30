@@ -34,18 +34,28 @@ function runClaude(prompt) {
 
 export function createClaudeAdapter() {
   return {
-    async composeAdjustedInstructions({ loopName, failedChecks, reviewerNotes }) {
+    async composeAdjustedInstructions({
+      loopName,
+      failedChecks,
+      reviewerNotes,
+      attempt,
+      previousInstructions,
+    }) {
       const checks = (failedChecks || [])
         .map((c) => `- ${c.check_name}: ${c.detail ?? ""}`)
         .join("\n");
       const prompt = `You are the loop orchestrator for "${loopName}". The last run failed its exit gate.
+This is attempt ${attempt ?? "?"}.
 Failed checks:
 ${checks}
 
 Last reviewer notes:
 ${reviewerNotes || "(none)"}
 
-Write concise adjusted instructions for the next executor attempt. Mention every failed check name.`;
+Previous adjusted instructions:
+${previousInstructions || "(none)"}
+
+Write concise adjusted instructions for the next executor attempt. Mention every failed check name. Do not repeat the previous instructions verbatim.`;
       return runClaude(prompt);
     },
     async rewriteSynthesis({ targetRel, researchJson, currentBody }) {

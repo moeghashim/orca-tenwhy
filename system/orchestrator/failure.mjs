@@ -41,16 +41,24 @@ export async function handleGateFailed({ db, config, eng, run, model }) {
   const reviewerNotes = lastIter?.reviewer_notes ?? "";
 
   if (run.attempt < retryCap) {
+    const nextAttempt = run.attempt + 1;
+    const checkNames = failedChecks.map((c) => c.check_name).join(", ");
+    const previous = run.adjusted_instructions || "";
+    const prefix = `Attempt ${nextAttempt}/${retryCap} — previous adjusted instructions did not resolve: ${checkNames}`;
     let raw = "";
     if (model && typeof model.composeAdjustedInstructions === "function") {
       raw = await model.composeAdjustedInstructions({
         loopName: run.loop_name,
         failedChecks,
         reviewerNotes,
-        attempt: run.attempt,
+        attempt: nextAttempt,
+        previousInstructions: previous,
       });
     }
-    const adjusted = ensureAdjustedInstructions(raw, failedChecks, reviewerNotes);
+    const guaranteed = ensureAdjustedInstructions(raw, failedChecks, reviewerNotes);
+    const adjusted = [prefix, previous ? `Previous:\n${previous}` : "", guaranteed]
+      .filter(Boolean)
+      .join("\n\n");
     const nextId = queueRetry(db, {
       engagementId: eng.id,
       loopName: run.loop_name,

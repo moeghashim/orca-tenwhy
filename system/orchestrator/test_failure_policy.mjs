@@ -99,3 +99,44 @@ test("forced failure: attempts 0,1,2 then needs_human; retries cite checks and n
   db.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test("retries stay distinct when the model fixture returns the same text twice", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-fail-same-"));
+  const dbPath = path.join(tmp, "t.db");
+  const { openDb } = await import("./util.mjs");
+  const db = openDb(dbPath);
+  const workdir = path.join(tmp, "state/customers/acme");
+  generateCustomerRepo({
+    slug: "acme",
+    customerName: "Acme",
+    idea: "clinic",
+    siteUrl: "",
+    targetDir: workdir,
+  });
+  const engId = "eng_fail001";
+  const now = utcNow();
+  db.prepare(
+    `INSERT INTO engagements (id, customer_name, idea, site_url, repo_url, status, created_at, updated_at)
+     VALUES (?, 'Acme', 'clinic', NULL, ?, 'new', ?, ?)`,
+  ).run(engId, workdir, now, now);
+  const same = "Please scrape five competitor homepages.";
+  await tick({
+    db,
+    config: CONFIG,
+    repoRoot: tmp,
+    runLoop: failingRunLoop({}),
+    adapters: {
+      orchestrator: createOrchestratorModelFixture({ instructions: [same, same] }),
+    },
+  });
+  const runs = db
+    .prepare("SELECT attempt, adjusted_instructions FROM loop_runs WHERE loop_name = 'company-research' ORDER BY attempt")
+    .all();
+  assert.equal(runs.length, 3);
+  assert.notEqual(runs[1].adjusted_instructions, runs[2].adjusted_instructions);
+  assert.match(runs[1].adjusted_instructions, /^Attempt 1\/2/);
+  assert.match(runs[2].adjusted_instructions, /^Attempt 2\/2/);
+  assert.ok(runs[2].adjusted_instructions.includes(runs[1].adjusted_instructions));
+  db.close();
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
