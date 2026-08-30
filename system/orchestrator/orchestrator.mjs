@@ -341,9 +341,14 @@ export async function tick({
 export async function runDaemon({
   intervalMs = 2000,
   dbPath = process.env.TENWHY_DB || path.join(ROOT, "state/orchestrator.db"),
-  tickOpts = {},
+  tickOpts = null,
 } = {}) {
-  const config = tickOpts.config || (await loadLoopsConfig());
+  const opts =
+    tickOpts && typeof tickOpts.runLoop === "function"
+      ? tickOpts
+      : (await import("./wiring.mjs")).buildTickOpts({ repoRoot: ROOT, dbPath });
+  const resolved = opts instanceof Promise ? await opts : opts;
+  const config = resolved.config || (await loadLoopsConfig());
   let stopped = false;
   const stop = () => {
     stopped = true;
@@ -353,7 +358,7 @@ export async function runDaemon({
   while (!stopped) {
     const db = openDb(dbPath);
     try {
-      await tick({ db, dbPath, config, ...tickOpts });
+      await tick({ db, dbPath, config, ...resolved });
     } finally {
       db.close();
     }

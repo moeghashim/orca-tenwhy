@@ -150,8 +150,11 @@ export async function main(argv = process.argv.slice(2)) {
     }
     if (cmd === "daemon") {
       const { runDaemon } = await import("./orchestrator.mjs");
+      const { buildTickOpts } = await import("./wiring.mjs");
       const interval = Number(parsed.flags["interval-ms"] || 2000);
-      await runDaemon({ intervalMs: interval });
+      const pathDb = dbPath();
+      const tickOpts = await buildTickOpts({ repoRoot: ROOT, dbPath: pathDb });
+      await runDaemon({ intervalMs: interval, dbPath: pathDb, tickOpts });
       return;
     }
     console.error(usage());
