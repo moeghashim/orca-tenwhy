@@ -7,8 +7,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 : "${SESSION_ID:?SESSION_ID is required}"
 PROMPT="${1:-${PROMPT:?PROMPT is required}}"
 mkdir -p "$SESSION_DIR"
-cd "$ROOT"
 exec pi -p --offline --mode json --provider "$PROVIDER" --model "$MODEL" --thinking high \
    --no-builtin-tools --no-extensions --no-skills --no-prompt-templates --no-context-files \
-   -e system/loops/company-research/pi-tools.ts --tools scrape \
+   -e "$ROOT/system/loops/company-research/pi-tools.ts" --tools scrape \
    --session-dir "$SESSION_DIR" --session-id "$SESSION_ID" "$PROMPT"
