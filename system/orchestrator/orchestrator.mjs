@@ -217,6 +217,11 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
       continue;
     }
     if (approval.action === "approve") {
+      insertEvent(db, {
+        engagementId: eng.id,
+        kind: "approval.processed",
+        payload: { approvalId: approval.id, action: approval.action },
+      });
       try {
         const result = await deploy({
           engagementId: eng.id,
@@ -245,6 +250,7 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
           payload: { reason: "deploy_failed", approvalId: approval.id },
         });
       }
+      continue;
     } else if (approval.action === "request_changes") {
       const notes = approval.notes || "";
       const runId = queueLoopRun(db, {

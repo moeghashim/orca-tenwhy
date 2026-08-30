@@ -138,3 +138,33 @@ test("approve while running → approval.rejected_state, no deploy", async () =>
   db.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test("deploy throw is claimed: second tick does not deploy again", async () => {
+  const { tmp, db, id } = setup();
+  const calls = [];
+  const deploy = async (args) => {
+    calls.push(args);
+    throw new Error("boom");
+  };
+  await tick({ db, config: CONFIG, repoRoot: tmp, runLoop: passingRunLoop(), deploy });
+  const apr = prefixedId("apr");
+  db.prepare("INSERT INTO approvals (id, engagement_id, action, notes, created_at) VALUES (?, ?, 'approve', NULL, ?)").run(
+    apr,
+    id,
+    utcNow(),
+  );
+  await tick({ db, config: CONFIG, repoRoot: tmp, runLoop: passingRunLoop(), deploy });
+  assert.equal(calls.length, 1);
+  const eng = db.prepare("SELECT status FROM engagements WHERE id = ?").get(id);
+  assert.equal(eng.status, "needs_human");
+  const fail = db.prepare("SELECT payload FROM events WHERE kind = 'engagement.needs_human' ORDER BY id DESC LIMIT 1").get();
+  assert.equal(JSON.parse(fail.payload).reason, "deploy_failed");
+  const processed = db
+    .prepare("SELECT payload FROM events WHERE kind = 'approval.processed' AND json_extract(payload, '$.approvalId') = ?")
+    .get(apr);
+  assert.ok(processed);
+  await tick({ db, config: CONFIG, repoRoot: tmp, runLoop: passingRunLoop(), deploy });
+  assert.equal(calls.length, 1);
+  db.close();
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
