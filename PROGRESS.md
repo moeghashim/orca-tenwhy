@@ -48,8 +48,8 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 |---|---|---|---|---|
 | P3.1 | 🟡 | `TENWHY_REPO_BACKEND=local TENWHY_DB=/tmp/t.db bin/loopctl new "Boutique dental clinic in Amman" --url https://example.com` → `eng_d106615e` (exit 0). `sqlite3 /tmp/t.db "select id,customer_name,idea,site_url,status,repo_url from engagements"` → `eng_d106615e\|example.com\|Boutique dental clinic in Amman\|https://example.com\|new\|/Users/moeghashim/orca/projects/orca-tenwhy/state/remotes/example-com.git`. `git -C state/customers/example-com ls-remote origin` → `b997c8f70be7f0b595c225bd46594998597ba06e	HEAD` / `refs/heads/main` (exit 0). | `876cd5f88e348c70fc9447353dbf40e7a2b76f64` | _pending_ |
 | P3.2 | 🟡 | `node --test system/orchestrator/test_scheduler.mjs` → `✔ research runs first; website queued only after gate_passed; handoff payload matches outputs` · `✔ two root loops from edges run concurrently` `pass 2` `fail 0` (exit 0). | `38b24ecd922b0307d56fda66409aff72f21a9faa` | _pending_ |
-| P3.3 | 🟡 | `node --test system/orchestrator/test_failure_policy.mjs` → `✔ forced failure: attempts 0,1,2 then needs_human; retries cite checks and notes` `pass 1` `fail 0` (exit 0). | _pending_ | _pending_ |
-| P3.4 | ⬜ | | | |
+| P3.3 | 🟡 | `node --test system/orchestrator/test_failure_policy.mjs` → `✔ forced failure: attempts 0,1,2 then needs_human; retries cite checks and notes` `pass 1` `fail 0` (exit 0). | `3c36fbdd6b6f1ce3b9b84300046ed68469b714b8` | _pending_ |
+| P3.4 | 🟡 | `node --test system/orchestrator/test_knowledge.mjs` → `✔ absorb rewrites synthesis, appends History, never rewrites prior lines` `pass 1` `fail 0` (exit 0). | _pending_ | _pending_ |
 | P3.5 | ⬜ | | | |
 | P3.6 | ⬜ | | | |
 
