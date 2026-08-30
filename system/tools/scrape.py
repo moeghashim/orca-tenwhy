@@ -17,11 +17,11 @@ import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.robotparser
 from datetime import datetime, timezone
 from pathlib import Path
 
 from scrapling.fetchers import Fetcher
+from protego import Protego
 
 USER_AGENT = "tenwhy-research/1.0"
 RATE_LIMIT_S = 2.0
@@ -181,10 +181,11 @@ def robots_allows(url: str, out_dir: Path) -> tuple[bool, str | None]:
     body, unreachable = load_robots(url, out_dir)
     if unreachable or body is None:
         return True, "robots_unreachable"
-    parser = urllib.robotparser.RobotFileParser()
-    parser.parse(body.splitlines())
-    allowed = parser.can_fetch(USER_AGENT, url)
-    return allowed, None
+    # protego (Google's robots.txt spec: `*` and `$` wildcards, blank lines inside a
+    # record) — urllib.robotparser silently drops every rule after a blank line that
+    # follows `User-agent: *`, which allowed disallowed GitHub paths (found 2026-08-30).
+    allowed = Protego.parse(body).can_fetch(url, USER_AGENT)
+    return bool(allowed), None
 
 
 def normalize_text(text: str) -> str:

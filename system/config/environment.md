@@ -61,6 +61,7 @@ Risk note: Pi and Codex CLI each hold their own ChatGPT OAuth grant (`~/.pi/agen
 | Env | `system/tools/.venv` (gitignored), created with `uv venv --python 3.12 .venv` (uv 0.10.1; system python is 3.9.6 — not used) |
 | Install | `uv pip install --python .venv/bin/python "scrapling[fetchers]"` then `.venv/bin/scrapling install` (browser deps) → exit 0 |
 | Verify | `system/tools/.venv/bin/python -c "import scrapling; print(scrapling.__version__)"` → `0.4.15` (exit 0) |
+| robots.txt parser | `protego` 0.6.2 (Scrapling dependency; `python -c "import importlib.metadata as m; print(m.version('protego'))"` → `0.6.2`). Chosen over `urllib.robotparser`, which drops every rule after a blank line following `User-agent: *` and ignores `*`/`$` wildcards — verified 2026-08-30 against github.com/robots.txt (`/copilot/` wrongly allowed). |
 
 ## P0.6 Stripe Projects
 

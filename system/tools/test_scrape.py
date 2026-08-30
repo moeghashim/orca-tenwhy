@@ -27,7 +27,10 @@ OK_HTML = b"""<!doctype html>
 SECRET_HTML = b"""<!doctype html>
 <html><head><title>Secret</title></head><body>nope</body></html>
 """
-ROBOTS = b"User-agent: *\nDisallow: /blocked/\n"
+# Real-world shape (mirrors github.com): blank line right after the UA line, `*`
+# and `$` wildcards. urllib.robotparser drops every rule after that blank line;
+# scrape.py must use a spec-compliant parser (protego).
+ROBOTS = b"User-agent: bingbot\nDisallow: /nothing/\n\nUser-agent: *\n\nDisallow: /blocked/\nDisallow: /*q=\nDisallow: /exact$\n"
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -41,6 +44,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
             body, status = OK_HTML, 200
         elif self.path == "/blocked/secret.html":
             body, status = SECRET_HTML, 200
+        elif self.path in ("/wild?q=1", "/exact", "/exact/child"):
+            body, status = OK_HTML, 200
         else:
             body, status = b"missing", 404
         self.send_response(status)
@@ -137,6 +142,22 @@ class ScrapeTests(unittest.TestCase):
             body = json.loads(event["payload"])
             self.assertEqual(body["url"], url)
             self.assertEqual(body["reason"], "robots")
+
+    def test_robots_wildcard_and_blank_line(self):
+        # `/*q=` wildcard → refused; `/exact$` → only the exact path is refused
+        for url, expect_refused in (
+            (f"{self.base}/wild?q=1", True),
+            (f"{self.base}/exact", True),
+            (f"{self.base}/exact/child", False),
+        ):
+            proc = self._run(url)
+            if expect_refused:
+                self.assertEqual(proc.returncode, 3, url)
+                payload = json.loads(proc.stdout.strip().splitlines()[-1])
+                self.assertTrue(payload["refused"], url)
+                self.assertEqual(payload["reason"], "robots", url)
+            else:
+                self.assertEqual(proc.returncode, 0, url + "\n" + proc.stderr)
 
     def test_allowlist_refused(self):
         url = f"{self.base}/ok.html"
