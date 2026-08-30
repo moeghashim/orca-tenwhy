@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Engagement CLI. Real implementation is scheduled for P3.1.
+echo "usage: loopctl <new|update|approve> [args]"
+echo "not implemented until P3.1"
+exit 2
