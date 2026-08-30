@@ -15,4 +15,6 @@ Source: Codex `REVIEWED: P3 issues #r1` (2026-08-30) + orchestrator spot-check. 
 8. Add `system/loops/_shared/run-pi-reviewer.sh` (no tools: `--no-tools`, no `-e`/`--tools`) and make `adapters/pi.mjs` use it for `role: reviewer` in every loop; verify asserts the reviewer session JSONL has no `toolCall` entries.
 9. `research_gate.py` check 5 `sources_complete` is a **multiset** comparison of `(url, http_status)` including duplicates and refusals (`refused` for NULL); update fixtures/tests.
 
+10. `research_gate.py` check 3: only count `customer_product_id` values that exist in `company.customer_products[].id`; a match citing an unknown id is `offending` (detail `unknown customer_product_id`). Add a fixture `fail_coverage_unknown_id` (2 products, 1 match with a made-up id → 0/2) to `test_research_gate.py`.
+
 Finish with `DONE P3-fix <hash…>` — only hashes in `git log`.
