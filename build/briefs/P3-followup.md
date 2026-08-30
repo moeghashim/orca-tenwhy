@@ -8,4 +8,11 @@ Source: Codex `REVIEWED: P3 issues #r1` (2026-08-30) + orchestrator spot-check. 
 4. **Claim the approval before deploying** (`orchestrator.mjs:221`): insert `approval.processed` (or an explicit `approval.claimed`) **before** calling `deploy`, then `engagement.complete`/`needs_human` after; a crash mid-deploy must not lead to a second deploy on the next tick. Test: deploy fixture that throws after recording a call → second `tick` does not call deploy again; engagement is `needs_human` with `deploy_failed`.
 5. **Deterministic repo dir** (`orchestrator.mjs:29`): `customerRepoDir` prefix-matches `slugify(customer_name)`, so a suffixed engagement (`<slug>-<id>`) resolves to the first customer's repo. Persist the slug: read it from the `engagement.created` event payload (`json_extract(payload, '$.slug')`) and only fall back to the slug heuristic when absent. Test: two engagements with the same customer name resolve to two different dirs.
 
+## P4 spec follow-ups (Codex `SPEC-REVIEW: P4/P5 issues #s1`, applied to `build/briefs/P4.md` after you started P4 — re-read that file and reconcile your P4.1/P4.2 output)
+
+6. `materialize.mjs` is deterministic code that records the executor trace and writes `research/SOURCES.md` with §8 frontmatter (`updated`, `trace`) and an append-only `## History` (test: two materializations → two History lines, first unchanged).
+7. The website loop has **no** materialize hook (remove any placeholder for it).
+8. Add `system/loops/_shared/run-pi-reviewer.sh` (no tools: `--no-tools`, no `-e`/`--tools`) and make `adapters/pi.mjs` use it for `role: reviewer` in every loop; verify asserts the reviewer session JSONL has no `toolCall` entries.
+9. `research_gate.py` check 5 `sources_complete` is a **multiset** comparison of `(url, http_status)` including duplicates and refusals (`refused` for NULL); update fixtures/tests.
+
 Finish with `DONE P3-fix <hash…>` — only hashes in `git log`.
