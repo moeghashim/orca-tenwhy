@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["company", "competitors", "product_matches", "enhancement_ideas"],
+  "properties": {
+    "company": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "summary", "customer_products"],
+      "properties": {
+        "name": { "type": "string" },
+        "summary": { "type": "string" },
+        "customer_products": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["id", "name", "price", "url"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": ["number", "null"] },
+              "url": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "competitors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "url", "summary", "products"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "summary": { "type": "string" },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["name", "price", "url"],
+              "properties": {
+                "name": { "type": "string" },
+                "price": { "type": ["number", "null"] },
+                "url": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "product_matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["customer_product_id", "competitor", "competitor_product", "competitor_price", "source_url"],
+        "properties": {
+          "customer_product_id": { "type": "string" },
+          "competitor": { "type": "string" },
+          "competitor_product": { "type": "string" },
+          "competitor_price": { "type": ["number", "null"] },
+          "source_url": { "type": "string" }
+        }
+      }
+    },
+    "enhancement_ideas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["idea", "rationale"],
+        "properties": {
+          "idea": { "type": "string" },
+          "rationale": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -284,6 +284,7 @@ export async function tick({
   handleGateFailed = defaultHandleGateFailed,
   processApprovals: processApprovalsFn = processApprovals,
   repoRoot = ROOT,
+  dbPath = null,
 }) {
   db.exec("PRAGMA foreign_keys = ON");
   const news = db.prepare("SELECT * FROM engagements WHERE status = 'new'").all();
@@ -316,6 +317,7 @@ export async function tick({
           config,
           adapter: adapters.loop,
           gateRunner: adapters.gateRunner,
+          dbPath,
           inputs:
             run.loop_name === "company-research"
               ? { idea: eng.idea, site_url: eng.site_url }
@@ -351,7 +353,7 @@ export async function runDaemon({
   while (!stopped) {
     const db = openDb(dbPath);
     try {
-      await tick({ db, config, ...tickOpts });
+      await tick({ db, dbPath, config, ...tickOpts });
     } finally {
       db.close();
     }

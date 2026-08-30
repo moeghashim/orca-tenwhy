@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -60,6 +61,25 @@ export function parseReviewerVerdict(text) {
 }
 
 const loopModuleCache = new Map();
+
+export async function defaultGateRunner({ loopName, workdir, loopRunId, dbPath }) {
+  const loopMod = await loadLoopModule(loopName);
+  if (!loopMod?.gate) return [];
+  if (!dbPath) throw new Error("defaultGateRunner requires dbPath");
+  const python = path.join(ROOT, "system/tools/.venv/bin/python");
+  const script = path.isAbsolute(loopMod.gate) ? loopMod.gate : path.join(ROOT, loopMod.gate);
+  const result = spawnSync(
+    python,
+    [script, "--workdir", workdir, "--db", dbPath, "--loop-run-id", loopRunId],
+    { encoding: "utf8" },
+  );
+  const stdout = (result.stdout || "").trim();
+  if (!stdout) {
+    throw new Error(`gate ${script} produced no stdout (exit ${result.status}): ${result.stderr}`);
+  }
+  const line = stdout.split(/\n/).pop();
+  return JSON.parse(line);
+}
 
 export async function loadLoopModule(loopName) {
   if (loopModuleCache.has(loopName)) return loopModuleCache.get(loopName);
@@ -461,7 +481,8 @@ export async function runLoop({
     return { loopRunId, status: "gate_failed", iterations, gateChecks: [] };
   }
 
-  const rawChecks = (await gateRunner({ loopName, workdir, db, loopRunId })) ?? [];
+  const runner = gateRunner ?? defaultGateRunner;
+  const rawChecks = (await runner({ loopName, workdir, db, loopRunId, dbPath })) ?? [];
   const gateChecks = rawChecks.map((c) => ({
     check_name: c.check_name,
     passed: c.passed ? 1 : 0,
@@ -524,9 +545,7 @@ if (isMain()) {
       workdir: values.workdir,
       config,
       adapter: createPiAdapter({ repoRoot: ROOT, dbPath }),
-      gateRunner: async () => {
-        throw new Error("CLI gateRunner is not implemented until a loop-specific gate is wired");
-      },
+      gateRunner: defaultGateRunner,
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } finally {
