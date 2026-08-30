@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createPiAdapter } from "./adapters/pi.mjs";
 import { prefixedId, utcNow } from "./util.mjs";
@@ -59,13 +59,55 @@ export function parseReviewerVerdict(text) {
   };
 }
 
+const loopModuleCache = new Map();
+
+export async function loadLoopModule(loopName) {
+  if (loopModuleCache.has(loopName)) return loopModuleCache.get(loopName);
+  const idx = path.join(ROOT, "system/loops", loopName, "index.mjs");
+  if (!fs.existsSync(idx)) {
+    loopModuleCache.set(loopName, null);
+    return null;
+  }
+  const mod = await import(pathToFileURL(idx).href);
+  loopModuleCache.set(loopName, mod);
+  return mod;
+}
+
 function loadPrompt(loopName, role) {
   const p = path.join(ROOT, "system/loops", loopName, "prompts", `${role}.md`);
   if (fs.existsSync(p)) return fs.readFileSync(p, "utf8");
   return null;
 }
 
-function buildExecutorPrompt({ loopName, n, adjustedInstructions, previousNotes, workdir }) {
+function engagementVars(db, engagementId, inputs = {}) {
+  const eng = engagementId
+    ? db.prepare("SELECT * FROM engagements WHERE id = ?").get(engagementId)
+    : null;
+  return {
+    idea: inputs.idea ?? eng?.idea ?? "",
+    site_url: inputs.site_url ?? eng?.site_url ?? "",
+    customer_name: inputs.customer_name ?? eng?.customer_name ?? "",
+  };
+}
+
+function buildExecutorPrompt({
+  loopMod,
+  loopName,
+  n,
+  adjustedInstructions,
+  previousNotes,
+  workdir,
+  vars = {},
+}) {
+  if (loopMod?.executorPrompt) {
+    return loopMod.executorPrompt({
+      ...vars,
+      adjusted_instructions: adjustedInstructions ?? "",
+      previous_reviewer_notes: previousNotes ?? "",
+      n,
+      workdir,
+    });
+  }
   const base =
     loadPrompt(loopName, "executor") ??
     `You are the executor for the ${loopName} loop. Write outputs under ${workdir}.`;
@@ -93,16 +135,58 @@ export function readExecutorOutput(outputPath, max = REVIEWER_CONTENT_MAX) {
   }
 }
 
-function buildReviewerPrompt({ loopName, n, executorOutputPath, workdir }) {
-  const base =
-    loadPrompt(loopName, "reviewer") ??
-    `You are the reviewer for the ${loopName} loop. Reply with a JSON object {"verdict":"revise|approve|reject|escalate","notes":"..."}.`;
+function scrapesTable(db, loopRunId) {
+  const rows = db
+    .prepare("SELECT url, http_status FROM scrapes WHERE loop_run_id = ? ORDER BY created_at, url")
+    .all(loopRunId);
+  if (!rows.length) return "(no scrapes rows)";
+  return ["| url | http_status |", "| --- | --- |", ...rows.map((r) => `| ${r.url} | ${r.http_status ?? ""} |`)].join(
+    "\n",
+  );
+}
+
+function readOptional(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function buildReviewerPrompt({
+  loopMod,
+  loopName,
+  n,
+  executorOutputPath,
+  workdir,
+  db,
+  loopRunId,
+  vars = {},
+}) {
+  let base;
+  if (loopMod?.reviewerPrompt) {
+    base = loopMod.reviewerPrompt({
+      ...vars,
+      research_json: readOptional(path.join(workdir, "research/RESEARCH.json")),
+      sources_md: readOptional(path.join(workdir, "research/SOURCES.md")),
+      scrapes_table: scrapesTable(db, loopRunId),
+      n,
+      workdir,
+    });
+  } else {
+    base =
+      loadPrompt(loopName, "reviewer") ??
+      `You are the reviewer for the ${loopName} loop. Reply with a JSON object {"verdict":"revise|approve|reject|escalate","notes":"..."}.`;
+    base = [
+      base,
+      "",
+      `Iteration ${n}.`,
+      `Executor output path: ${executorOutputPath}`,
+      `Workdir: ${workdir}`,
+    ].join("\n");
+  }
   return [
     base,
-    "",
-    `Iteration ${n}.`,
-    `Executor output path: ${executorOutputPath}`,
-    `Workdir: ${workdir}`,
     "",
     "=== EXECUTOR OUTPUT (verbatim) ===",
     readExecutorOutput(executorOutputPath),
@@ -156,6 +240,7 @@ export async function runLoop({
   config,
   adapter,
   gateRunner,
+  inputs = null,
 }) {
   db.exec("PRAGMA foreign_keys = ON");
   const cap = config?.caps?.iteration_cap ?? 4;
@@ -201,15 +286,19 @@ export async function runLoop({
   let lastExecutorTrace = null;
   let previousNotes = null;
   let terminal = null;
+  const loopMod = await loadLoopModule(loopName);
+  const vars = engagementVars(db, engagementId, inputs ?? {});
 
   for (let n = 1; n <= cap; n++) {
     const execSessionId = randomUUID();
     const execPrompt = buildExecutorPrompt({
+      loopMod,
       loopName,
       n,
       adjustedInstructions,
       previousNotes,
       workdir,
+      vars,
     });
     let execResult;
     try {
@@ -231,12 +320,56 @@ export async function runLoop({
     lastExecutorTrace = execResult.traceRef;
     const outputPath = execResult.outputPath;
 
+    if (typeof loopMod?.materialize === "function") {
+      let mat;
+      try {
+        mat = await loopMod.materialize({ outputPath, workdir, db, loopRunId });
+      } catch (err) {
+        mat = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+      if (!mat?.ok) {
+        const error = `FORMAT: ${mat?.error || "materialize failed"}`;
+        const iterationId = prefixedId("it");
+        db.prepare(
+          `INSERT INTO iterations (
+            id, loop_run_id, n, executor_output_path, reviewer_verdict, reviewer_notes, pi_trace_ref, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(iterationId, loopRunId, n, outputPath ?? null, "revise", error, execResult.traceRef ?? null, utcNow());
+        insertEvent(db, {
+          engagementId,
+          loopRunId,
+          kind: "iteration.recorded",
+          payload: {
+            n,
+            verdict: "revise",
+            executorTrace: execResult.traceRef,
+            reviewerTrace: null,
+            materialize: false,
+          },
+        });
+        iterations.push({
+          n,
+          verdict: "revise",
+          notes: error,
+          executorTrace: execResult.traceRef,
+          reviewerTrace: null,
+          materialize: false,
+        });
+        previousNotes = error;
+        continue;
+      }
+    }
+
     const revSessionId = randomUUID();
     const revPrompt = buildReviewerPrompt({
+      loopMod,
       loopName,
       n,
       executorOutputPath: outputPath,
       workdir,
+      db,
+      loopRunId,
+      vars,
     });
     let revResult;
     try {

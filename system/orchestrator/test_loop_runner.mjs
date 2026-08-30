@@ -45,6 +45,23 @@ function setup() {
   return { dir, dbPath, db, workdir, engagementId };
 }
 
+function withResearchJson(label) {
+  const payload = {
+    RESEARCH: {
+      company: {
+        name: "Acme",
+        summary: String(label),
+        customer_products: [{ id: "cp_01", name: "Widget", price: null, url: "" }],
+      },
+      competitors: [],
+      product_matches: [],
+      enhancement_ideas: [],
+    },
+    SOURCES_MD: "| url | http_status | note |\n| --- | --- | --- |\n",
+  };
+  return `${label}\n\n\`\`\`json\n${JSON.stringify(payload)}\n\`\`\`\n`;
+}
+
 function kinds(db, loopRunId) {
   return db
     .prepare("SELECT kind FROM events WHERE loop_run_id = ? ORDER BY id")
@@ -76,7 +93,7 @@ test("A: revise then approve, gate all-pass → gate_passed", async (t) => {
   const { db, result } = await run(
     t,
     createFixtureAdapter({
-      executor: ["draft-1", "draft-2"],
+      executor: [withResearchJson("draft-1"), withResearchJson("draft-2")],
       reviewer: [
         JSON.stringify({ verdict: "revise", notes: "needs work" }),
         JSON.stringify({ verdict: "approve", notes: "ok" }),
@@ -110,7 +127,12 @@ test("B: reviewer prose with no JSON is coerced to revise FORMAT:", async (t) =>
   const { db, result } = await run(
     t,
     createFixtureAdapter({
-      executor: ["draft-1", "draft-2", "draft-3", "draft-4"],
+      executor: [
+        withResearchJson("draft-1"),
+        withResearchJson("draft-2"),
+        withResearchJson("draft-3"),
+        withResearchJson("draft-4"),
+      ],
       reviewer: [prose, prose, prose, prose],
     }),
     async () => [{ check_name: "ok", passed: 1, detail: "ok" }],
@@ -129,7 +151,12 @@ test("C: four revise → gate_failed, no gate_checks", async (t) => {
   const { db, result } = await run(
     t,
     createFixtureAdapter({
-      executor: ["a", "b", "c", "d"],
+      executor: [
+        withResearchJson("a"),
+        withResearchJson("b"),
+        withResearchJson("c"),
+        withResearchJson("d"),
+      ],
       reviewer: [revise, revise, revise, revise],
     }),
     async () => [{ check_name: "should-not-run", passed: 1, detail: "nope" }],
@@ -147,7 +174,7 @@ test("D: escalate on iteration 1 → needs_human", async (t) => {
   const { db, result } = await run(
     t,
     createFixtureAdapter({
-      executor: ["draft"],
+      executor: [withResearchJson("draft")],
       reviewer: [JSON.stringify({ verdict: "escalate", notes: "need Moe" })],
     }),
     async () => [{ check_name: "ok", passed: 1, detail: "ok" }],
@@ -163,7 +190,7 @@ test("E: approve but gate fails one check → gate_failed", async (t) => {
   const { db, result } = await run(
     t,
     createFixtureAdapter({
-      executor: ["draft"],
+      executor: [withResearchJson("draft")],
       reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
     }),
     async () => [
@@ -207,7 +234,7 @@ test("F: adapter failure (e.g. pi exit≠0 / OAuth) → needs_human with loop_ru
 test("G: reviewer prompt inlines the executor output verbatim (no-tools reviewer can read the work)", async (t) => {
   const seen = [];
   const inner = createFixtureAdapter({
-    executor: ["THE-EXECUTOR-WROTE-THIS-9f2c"],
+    executor: [withResearchJson("THE-EXECUTOR-WROTE-THIS-9f2c")],
     reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
   });
   const capturing = {
@@ -221,4 +248,35 @@ test("G: reviewer prompt inlines the executor output verbatim (no-tools reviewer
   const reviewerPrompt = seen.find((s) => s.role === "reviewer").prompt;
   assert.match(reviewerPrompt, /=== EXECUTOR OUTPUT \(verbatim\) ===/);
   assert.match(reviewerPrompt, /THE-EXECUTOR-WROTE-THIS-9f2c/);
+});
+
+test("H: executor output with no JSON block → revise FORMAT, reviewer never called", async (t) => {
+  let reviewerCalls = 0;
+  const inner = createFixtureAdapter({
+    executor: ["no json here", "still no json", "nope", "nothing"],
+    reviewer: [JSON.stringify({ verdict: "approve", notes: "should not run" })],
+  });
+  const capturing = {
+    async run(args) {
+      if (args.role === "reviewer") reviewerCalls += 1;
+      return inner.run(args);
+    },
+  };
+  const { db, result } = await run(t, capturing, async () => {
+    throw new Error("gate must not run");
+  });
+  assert.equal(result.status, "gate_failed");
+  assert.equal(result.iterations.length, 4);
+  assert.equal(result.iterations[0].verdict, "revise");
+  assert.match(result.iterations[0].notes, /^FORMAT:/);
+  assert.equal(reviewerCalls, 0);
+  const row = db
+    .prepare("SELECT reviewer_verdict, reviewer_notes FROM iterations WHERE loop_run_id = ? AND n = 1")
+    .get(result.loopRunId);
+  assert.equal(row.reviewer_verdict, "revise");
+  assert.ok(row.reviewer_notes.startsWith("FORMAT:"));
+  const ev = db
+    .prepare("SELECT payload FROM events WHERE loop_run_id = ? AND kind = 'iteration.recorded' ORDER BY id LIMIT 1")
+    .get(result.loopRunId);
+  assert.equal(JSON.parse(ev.payload).materialize, false);
 });

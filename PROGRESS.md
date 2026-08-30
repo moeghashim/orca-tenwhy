@@ -63,7 +63,7 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P4.1 | ⬜ | | | |
+| P4.1 | 🟡 | `node --test system/loops/company-research/test_prompts.mjs` → 3 pass (templates render; five SOP §6 check strings; fixture reviewer reply parses `approve` with notes referencing `1.`–`5.`) `fail 0` (exit 0). Extra runner test H: no fenced JSON → `revise` `FORMAT:`, reviewer never called. Real dry run blocked on Pi logins (blocker 1). **Pending after login:** `PROVIDER=openai-codex MODEL=gpt-5.6-luna SESSION_DIR=/tmp/tenwhy-pi-sessions SESSION_ID=smoke-p41 bash system/loops/website/run-pi.sh` with the rendered `reviewerPrompt` against `system/gates/fixtures/research/pass/`. | _pending_ | _pending_ |
 | P4.2 | ⬜ | | | |
 | P4.3 | ⬜ | | | |
 
