@@ -1,6 +1,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+export function createOrchestratorModelFixture({ instructions = [], synthesis } = {}) {
+  const queue = [...instructions];
+  return {
+    async composeAdjustedInstructions({ attempt }) {
+      const next = queue.shift();
+      if (next !== undefined) return next;
+      return `Retry attempt ${attempt ?? "n"} with focus on the failed checks.`;
+    },
+    async rewriteSynthesis({ targetRel, researchJson }) {
+      if (typeof synthesis === "function") return synthesis({ targetRel, researchJson });
+      const company = researchJson?.company?.name || "company";
+      return `Deterministic synthesis for ${targetRel} (${company}).`;
+    },
+  };
+}
+
 export function createFixtureAdapter(script) {
   const queues = {
     executor: [...(script.executor ?? [])],

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { generateCustomerRepo, slugify } from "./customer_repo.mjs";
+import { handleGateFailed as defaultHandleGateFailed } from "./failure.mjs";
 import {
   ROOT,
   insertEvent,
@@ -108,7 +109,7 @@ async function handleRunResult(
   eng,
   run,
   result,
-  { absorbResearch, repoRoot, handleGateFailed },
+  { absorbResearch, repoRoot, handleGateFailed, model },
 ) {
   if (result.status === "needs_human") {
     setEngagementStatus(db, eng.id, "needs_human");
@@ -122,7 +123,7 @@ async function handleRunResult(
   }
   if (result.status === "gate_failed") {
     if (typeof handleGateFailed === "function") {
-      await handleGateFailed({ db, config, eng, run, result });
+      await handleGateFailed({ db, config, eng, run, result, model });
     }
     return;
   }
@@ -193,7 +194,7 @@ export async function tick({
   runLoop,
   deploy,
   absorbResearch,
-  handleGateFailed,
+  handleGateFailed = defaultHandleGateFailed,
   processApprovals,
   repoRoot = ROOT,
 }) {
@@ -237,6 +238,7 @@ export async function tick({
           absorbResearch,
           repoRoot,
           handleGateFailed,
+          model: adapters.orchestrator,
         });
       }),
     );
