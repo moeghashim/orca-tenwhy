@@ -30,15 +30,15 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P1.1 | 🟡 | `git ls-remote origin; echo exit=$?` → `815fda9056185f5d9de8a5ffd46e11407523be94	HEAD` / `815fda9056185f5d9de8a5ffd46e11407523be94	refs/heads/main` `exit=0`. `find . -path ./node_modules -prune -o -path ./.git -prune -o -type d -print \| sort` includes `./bin` `./dashboard` `./dashboard/design` `./dashboard/server` `./dashboard/web` `./state` `./system` `./system/config` `./system/db` `./system/gates` `./system/loops` `./system/loops/company-research` `./system/loops/website` `./system/orchestrator` `./system/tools` `./templates` `./templates/customer-repo` | `0784e91` | _pending_ |
-| P1.2 | 🟡 | `bash system/db/test_schema.sh; echo exit=$?` → `PASS 1` `PASS 2` `PASS 3` `PASS 4` `PASS 5` `PASS 6` `PASS 7` `exit=0`. `make verify; echo exit=$?` → same 7 PASS, `exit=0`. | `cdd3d69` | _pending_ |
-| P1.3 | 🟡 | `node system/config/lint_loops.js; echo exit=$?` → `loops.yaml ok` `exit=0`. `make verify; echo exit=$?` → `PASS 1`–`PASS 7` then `loops.yaml ok` `exit=0`. | `b2157f9` | _pending_ |
+| P1.1 | ✅ | `git ls-remote origin; echo exit=$?` → `815fda9056185f5d9de8a5ffd46e11407523be94	HEAD` / `815fda9056185f5d9de8a5ffd46e11407523be94	refs/heads/main` `exit=0`. `find . -path ./node_modules -prune -o -path ./.git -prune -o -type d -print \| sort` includes `./bin` `./dashboard` `./dashboard/design` `./dashboard/server` `./dashboard/web` `./state` `./system` `./system/config` `./system/db` `./system/gates` `./system/loops` `./system/loops/company-research` `./system/loops/website` `./system/orchestrator` `./system/tools` `./templates` `./templates/customer-repo` | `0784e91` | `REVIEWED: P1 ok` (Codex, 2026-08-30, after f8932f8) |
+| P1.2 | ✅ | `bash system/db/test_schema.sh; echo exit=$?` → `PASS 1` `PASS 2` `PASS 3` `PASS 4` `PASS 5` `PASS 6` `PASS 7` `exit=0`. `make verify; echo exit=$?` → same 7 PASS, `exit=0`. | `cdd3d69` | `REVIEWED: P1 ok` (Codex, 2026-08-30, after f8932f8) |
+| P1.3 | ✅ | `node system/config/lint_loops.js; echo exit=$?` → `loops.yaml ok` `exit=0`. `make verify; echo exit=$?` → `PASS 1`–`PASS 7` then `loops.yaml ok` `exit=0`. | `b2157f9` | `REVIEWED: P1 ok`; executor Pi/xai model id re-verify tracked under P0.1 (Codex, 2026-08-30, after f8932f8) |
 
 ## Phase 2 — Pi harness integration & tools
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P2.1 | ⬜ | | | |
+| P2.1 | 🟡 | `system/tools/.venv/bin/python system/tools/test_scrape.py` → `Ran 5 tests in 5.095s` `OK` (exit 0). `make verify; echo exit=$?` → schema PASS 1–7, `loops.yaml ok`, scrape tests `OK`, `make_exit=0`. Real fetch: `system/tools/.venv/bin/python system/tools/scrape.py --url https://example.com --loop-run-id smoke --db /tmp/tenwhy-smoke.db` → `{"url": "https://example.com", "http_status": 200, "content_path": "/Users/moeghashim/orca/projects/orca-tenwhy/state/scrapes/smoke/327c3fda87ce286848a574982ddd0b7c7487f816.json"}` (exit 0). `sqlite3 /tmp/tenwhy-smoke.db "select url,http_status from scrapes"` → `https://example.com\|200`. | _pending_ | _pending_ |
 | P2.2 | ⬜ | | | |
 | P2.3 | ⬜ | | | |
 
