@@ -99,6 +99,14 @@ function loadPrompt(loopName, role) {
   return null;
 }
 
+function handoffJson(inputs = {}) {
+  if (inputs.handoff != null) {
+    return typeof inputs.handoff === "string" ? inputs.handoff : JSON.stringify(inputs.handoff);
+  }
+  if (inputs.researchJsonPath != null) return JSON.stringify(inputs);
+  return "";
+}
+
 function engagementVars(db, engagementId, inputs = {}) {
   const eng = engagementId
     ? db.prepare("SELECT * FROM engagements WHERE id = ?").get(engagementId)
@@ -107,6 +115,7 @@ function engagementVars(db, engagementId, inputs = {}) {
     idea: inputs.idea ?? eng?.idea ?? "",
     site_url: inputs.site_url ?? eng?.site_url ?? "",
     customer_name: inputs.customer_name ?? eng?.customer_name ?? "",
+    handoff: handoffJson(inputs),
   };
 }
 
@@ -120,18 +129,23 @@ function buildExecutorPrompt({
   vars = {},
 }) {
   if (loopMod?.executorPrompt) {
-    return loopMod.executorPrompt({
+    let prompt = loopMod.executorPrompt({
       ...vars,
       adjusted_instructions: adjustedInstructions ?? "",
       previous_reviewer_notes: previousNotes ?? "",
       n,
       workdir,
     });
+    if (vars.handoff) prompt += `\n\nHandoff JSON:\n${vars.handoff}\n`;
+    return prompt;
   }
   const base =
     loadPrompt(loopName, "executor") ??
     `You are the executor for the ${loopName} loop. Write outputs under ${workdir}.`;
   const parts = [base];
+  if (vars.idea) parts.push("", `Idea: ${vars.idea}`);
+  if (vars.site_url) parts.push("", `Site URL: ${vars.site_url}`);
+  if (vars.handoff) parts.push("", "Handoff JSON:", vars.handoff);
   if (adjustedInstructions) {
     parts.push("", "Adjusted instructions:", adjustedInstructions);
   }
@@ -299,7 +313,7 @@ export async function runLoop({
     engagementId,
     loopRunId,
     kind: "loop_run.started",
-    payload: { loopName, attempt },
+    payload: { loopName, attempt, inputs: inputs ?? null },
   });
 
   const iterations = [];

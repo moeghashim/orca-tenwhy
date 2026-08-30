@@ -250,6 +250,60 @@ test("G: reviewer prompt inlines the executor output verbatim (no-tools reviewer
   assert.match(reviewerPrompt, /THE-EXECUTOR-WROTE-THIS-9f2c/);
 });
 
+test("I: executor prompt includes idea/site_url and handoff JSON from inputs", async (t) => {
+  const seen = [];
+  const inner = createFixtureAdapter({
+    executor: [withResearchJson("draft")],
+    reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
+  });
+  const capturing = {
+    async run(args) {
+      seen.push({ role: args.role, prompt: args.prompt });
+      return inner.run(args);
+    },
+  };
+  const ctx = setup();
+  t.after(() => {
+    ctx.db.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  });
+  const handoff = {
+    researchJsonPath: "/tmp/research/RESEARCH.json",
+    sourcesPath: "/tmp/research/SOURCES.md",
+    companyName: "Acme Dental",
+    productCount: 2,
+    competitorCount: 5,
+  };
+  await runLoop({
+    db: ctx.db,
+    dbPath: ctx.dbPath,
+    loopName: "company-research",
+    engagementId: ctx.engagementId,
+    attempt: 0,
+    workdir: ctx.workdir,
+    config: CONFIG,
+    adapter: capturing,
+    gateRunner: async () => [{ check_name: "ok", passed: 1, detail: "" }],
+    inputs: {
+      idea: "Boutique dental clinic in Amman",
+      site_url: "https://example.com/clinic",
+      ...handoff,
+    },
+  });
+  const execPrompt = seen.find((s) => s.role === "executor").prompt;
+  assert.match(execPrompt, /Boutique dental clinic in Amman/);
+  assert.match(execPrompt, /https:\/\/example.com\/clinic/);
+  assert.match(execPrompt, /Handoff JSON:/);
+  assert.match(execPrompt, /RESEARCH\.json/);
+  assert.match(execPrompt, /"companyName":"Acme Dental"/);
+  const started = ctx.db
+    .prepare("SELECT payload FROM events WHERE kind = 'loop_run.started' ORDER BY id DESC LIMIT 1")
+    .get();
+  const payload = JSON.parse(started.payload);
+  assert.equal(payload.inputs.idea, "Boutique dental clinic in Amman");
+  assert.equal(payload.inputs.site_url, "https://example.com/clinic");
+});
+
 test("H: executor output with no JSON block → revise FORMAT, reviewer never called", async (t) => {
   let reviewerCalls = 0;
   const inner = createFixtureAdapter({
