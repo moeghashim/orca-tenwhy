@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { generateCustomerRepo, slugify } from "./customer_repo.mjs";
+import { deploy as defaultDeploy } from "./deploy.mjs";
 import { handleGateFailed as defaultHandleGateFailed } from "./failure.mjs";
 import {
   ROOT,
@@ -187,15 +188,101 @@ async function handleRunResult(
   }
 }
 
+export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = ROOT }) {
+  const pending = db
+    .prepare(
+      `SELECT a.* FROM approvals a
+       WHERE NOT EXISTS (
+         SELECT 1 FROM events e
+         WHERE e.kind = 'approval.processed'
+           AND json_extract(e.payload, '$.approvalId') = a.id
+       )
+       ORDER BY a.id`,
+    )
+    .all();
+  for (const approval of pending) {
+    const eng = db.prepare("SELECT * FROM engagements WHERE id = ?").get(approval.engagement_id);
+    if (!eng) continue;
+    if (eng.status !== "awaiting_approval") {
+      insertEvent(db, {
+        engagementId: eng.id,
+        kind: "approval.rejected_state",
+        payload: { approvalId: approval.id, action: approval.action, status: eng.status },
+      });
+      insertEvent(db, {
+        engagementId: eng.id,
+        kind: "approval.processed",
+        payload: { approvalId: approval.id, action: approval.action },
+      });
+      continue;
+    }
+    if (approval.action === "approve") {
+      try {
+        const result = await deploy({
+          engagementId: eng.id,
+          repoDir: customerRepoDir(eng, repoRoot),
+        });
+        const liveUrl = result?.liveUrl ?? result?.url ?? null;
+        db.prepare("UPDATE engagements SET status = ?, updated_at = ? WHERE id = ?").run(
+          "complete",
+          utcNow(),
+          eng.id,
+        );
+        insertEvent(db, {
+          engagementId: eng.id,
+          kind: "engagement.complete",
+          payload: { liveUrl },
+        });
+      } catch {
+        db.prepare("UPDATE engagements SET status = ?, updated_at = ? WHERE id = ?").run(
+          "needs_human",
+          utcNow(),
+          eng.id,
+        );
+        insertEvent(db, {
+          engagementId: eng.id,
+          kind: "engagement.needs_human",
+          payload: { reason: "deploy_failed", approvalId: approval.id },
+        });
+      }
+    } else if (approval.action === "request_changes") {
+      const notes = approval.notes || "";
+      const runId = queueLoopRun(db, {
+        engagementId: eng.id,
+        loopName: "website",
+        attempt: 0,
+        changeRequestId: approval.id,
+        adjustedInstructions: `Customer change request:\n${notes}`,
+      });
+      db.prepare("UPDATE engagements SET status = ?, updated_at = ? WHERE id = ?").run(
+        "running",
+        utcNow(),
+        eng.id,
+      );
+      insertEvent(db, {
+        engagementId: eng.id,
+        loopRunId: runId,
+        kind: "engagement.change_requested",
+        payload: { approvalId: approval.id, runId },
+      });
+    }
+    insertEvent(db, {
+      engagementId: eng.id,
+      kind: "approval.processed",
+      payload: { approvalId: approval.id, action: approval.action },
+    });
+  }
+}
+
 export async function tick({
   db,
   config,
   adapters = {},
   runLoop,
-  deploy,
+  deploy = defaultDeploy,
   absorbResearch,
   handleGateFailed = defaultHandleGateFailed,
-  processApprovals,
+  processApprovals: processApprovalsFn = processApprovals,
   repoRoot = ROOT,
 }) {
   db.exec("PRAGMA foreign_keys = ON");
@@ -244,8 +331,8 @@ export async function tick({
     );
   }
 
-  if (typeof processApprovals === "function") {
-    await processApprovals({ db, deploy, repoRoot, config });
+  if (typeof processApprovalsFn === "function") {
+    await processApprovalsFn({ db, deploy, repoRoot, config });
   }
 }
 

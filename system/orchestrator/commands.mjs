@@ -1,5 +1,5 @@
 import { queueLoopRun } from "./orchestrator.mjs";
-import { insertEvent, openDb, utcNow } from "./util.mjs";
+import { insertEvent, openDb, prefixedId, utcNow } from "./util.mjs";
 
 export function cmdStatus({ engagementId, dbPath }) {
   const db = openDb(dbPath);
@@ -48,6 +48,56 @@ export function cmdUpdate({ engagementId, dbPath }) {
     db.prepare("UPDATE engagements SET updated_at = ? WHERE id = ?").run(utcNow(), eng.id);
     process.stdout.write(`${runId}\n`);
     return { runId };
+  } finally {
+    db.close();
+  }
+}
+
+function insertApproval(db, { engagementId, action, notes }) {
+  const id = prefixedId("apr");
+  db.prepare(
+    `INSERT INTO approvals (id, engagement_id, action, notes, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, engagementId, action, notes ?? null, utcNow());
+  return id;
+}
+
+function requireAwaiting(eng, cmd) {
+  if (!eng) throw Object.assign(new Error("engagement not found"), { exitCode: 1 });
+  if (eng.status !== "awaiting_approval") {
+    throw Object.assign(new Error(`${cmd} requires status awaiting_approval (have ${eng.status})`), {
+      exitCode: 1,
+    });
+  }
+}
+
+export function cmdApprove({ engagementId, dbPath }) {
+  if (!engagementId) throw Object.assign(new Error("approve requires <engagement-id>"), { exitCode: 1 });
+  const db = openDb(dbPath);
+  try {
+    const eng = db.prepare("SELECT * FROM engagements WHERE id = ?").get(engagementId);
+    requireAwaiting(eng, "approve");
+    const id = insertApproval(db, { engagementId, action: "approve", notes: null });
+    process.stdout.write(`${id}\n`);
+    return { id };
+  } finally {
+    db.close();
+  }
+}
+
+export function cmdRequestChanges({ engagementId, notes, dbPath }) {
+  if (!engagementId) {
+    throw Object.assign(new Error("request-changes requires <engagement-id>"), { exitCode: 1 });
+  }
+  if (!notes) {
+    throw Object.assign(new Error("request-changes requires --notes"), { exitCode: 1 });
+  }
+  const db = openDb(dbPath);
+  try {
+    const eng = db.prepare("SELECT * FROM engagements WHERE id = ?").get(engagementId);
+    requireAwaiting(eng, "request-changes");
+    const id = insertApproval(db, { engagementId, action: "request_changes", notes });
+    process.stdout.write(`${id}\n`);
+    return { id };
   } finally {
     db.close();
   }

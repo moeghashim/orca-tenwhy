@@ -50,8 +50,8 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 | P3.2 | 🟡 | `node --test system/orchestrator/test_scheduler.mjs` → `✔ research runs first; website queued only after gate_passed; handoff payload matches outputs` · `✔ two root loops from edges run concurrently` `pass 2` `fail 0` (exit 0). | `38b24ecd922b0307d56fda66409aff72f21a9faa` | _pending_ |
 | P3.3 | 🟡 | `node --test system/orchestrator/test_failure_policy.mjs` → `✔ forced failure: attempts 0,1,2 then needs_human; retries cite checks and notes` `pass 1` `fail 0` (exit 0). | `3c36fbdd6b6f1ce3b9b84300046ed68469b714b8` | _pending_ |
 | P3.4 | 🟡 | `node --test system/orchestrator/test_knowledge.mjs` → `✔ absorb rewrites synthesis, appends History, never rewrites prior lines` `pass 1` `fail 0` (exit 0). | `5fa8aa9218a389c210d6eb61b5f324da5ff3a472` | _pending_ |
-| P3.5 | 🟡 | `node --test system/orchestrator/test_update.mjs` → `✔ two research passes leave two dated History entries on company/*.md` `pass 1` `fail 0` (exit 0). | _pending_ | _pending_ |
-| P3.6 | ⬜ | | | |
+| P3.5 | 🟡 | `node --test system/orchestrator/test_update.mjs` → `✔ two research passes leave two dated History entries on company/*.md` `pass 1` `fail 0` (exit 0). | `7769c182c4e4560051b2417131235a984d1c5e38` | _pending_ |
+| P3.6 | 🟡 | `node --test system/orchestrator/test_approval.mjs` → 3 pass (`awaiting_approval does not deploy; approve deploys once then complete`; `request_changes spawns website run at attempt 0 with change_request_id`; `approve while running → approval.rejected_state, no deploy`) `fail 0` (exit 0). | _pending_ | _pending_ |
 
 ## Phase 4 — Loop 1: Company Research
 
