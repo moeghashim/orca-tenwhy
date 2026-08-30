@@ -42,6 +42,26 @@ function extractAssistantText(stdout) {
   return text;
 }
 
+function extractStreamError(stdout) {
+  // pi --mode json emits assistant messages with stopReason "error" + errorMessage
+  // (e.g. OAuth refresh failures) while still exiting 0 — treat those as failures.
+  let error = null;
+  for (const line of String(stdout).split(/\n+/)) {
+    if (!line.trim()) continue;
+    let ev;
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const msg = ev.message ?? null;
+    if (msg && msg.role === "assistant" && msg.stopReason === "error") {
+      error = msg.errorMessage || "assistant stopReason=error";
+    }
+  }
+  return error;
+}
+
 function runPiScript({ script, args, env, cwd }) {
   return new Promise((resolve, reject) => {
     const child = spawn(script, args, {
@@ -109,13 +129,26 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
           },
         }),
       );
-      const text = extractAssistantText(result.stdout) || result.stdout.trim();
+      const traceRef = `pi://session/${session}`;
+      const streamError = extractStreamError(result.stdout);
+      const text = extractAssistantText(result.stdout);
+      if (result.code !== 0 || streamError || !text) {
+        const err = new Error(
+          `pi ${role} run failed (exit ${result.code})` +
+            (streamError ? `: ${streamError}` : !text ? ": no assistant text in output" : "") +
+            (result.stderr.trim() ? `\nstderr: ${result.stderr.trim().slice(-2000)}` : ""),
+        );
+        err.code = "PI_RUN_FAILED";
+        err.traceRef = traceRef;
+        err.exitCode = result.code;
+        throw err;
+      }
       const outputPath = path.join(workdir, `${role}-${n}.txt`);
       await fs.writeFile(outputPath, text, "utf8");
       return {
         text,
         outputPath,
-        traceRef: `pi://session/${session}`,
+        traceRef,
       };
     },
   };

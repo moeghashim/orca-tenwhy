@@ -180,3 +180,45 @@ test("E: approve but gate fails one check → gate_failed", async (t) => {
   assert.equal(fail.passed, 0);
   assert.equal(fail.detail, "missing products");
 });
+
+test("F: adapter failure (e.g. pi exit≠0 / OAuth) → needs_human with loop_run.error, no iteration row", async (t) => {
+  const failing = {
+    async run({ role }) {
+      const err = new Error(`pi ${role} run failed (exit 1): OAuth refresh failed`);
+      err.code = "PI_RUN_FAILED";
+      err.traceRef = "pi://session/dead-beef";
+      throw err;
+    },
+  };
+  const { db, result } = await run(t, failing, async () => {
+    throw new Error("gate must not run");
+  });
+  assert.equal(result.status, "needs_human");
+  assert.match(result.error, /OAuth refresh failed/);
+  const runRow = db.prepare("SELECT status, pi_trace_ref FROM loop_runs WHERE id = ?").get(result.loopRunId);
+  assert.equal(runRow.status, "needs_human");
+  assert.equal(runRow.pi_trace_ref, "pi://session/dead-beef");
+  assert.equal(db.prepare("SELECT count(*) c FROM iterations WHERE loop_run_id = ?").get(result.loopRunId).c, 0);
+  assert.deepEqual(kinds(db, result.loopRunId), ["loop_run.started", "loop_run.error", "loop_run.needs_human"]);
+  const ev = db.prepare("SELECT payload FROM events WHERE loop_run_id = ? AND kind = 'loop_run.error'").get(result.loopRunId);
+  assert.equal(JSON.parse(ev.payload).role, "executor");
+});
+
+test("G: reviewer prompt inlines the executor output verbatim (no-tools reviewer can read the work)", async (t) => {
+  const seen = [];
+  const inner = createFixtureAdapter({
+    executor: ["THE-EXECUTOR-WROTE-THIS-9f2c"],
+    reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
+  });
+  const capturing = {
+    async run(args) {
+      seen.push({ role: args.role, prompt: args.prompt });
+      return inner.run(args);
+    },
+  };
+  const { result } = await run(t, capturing, async () => [{ check_name: "ok", passed: 1, detail: "" }]);
+  assert.equal(result.status, "gate_passed");
+  const reviewerPrompt = seen.find((s) => s.role === "reviewer").prompt;
+  assert.match(reviewerPrompt, /=== EXECUTOR OUTPUT \(verbatim\) ===/);
+  assert.match(reviewerPrompt, /THE-EXECUTOR-WROTE-THIS-9f2c/);
+});

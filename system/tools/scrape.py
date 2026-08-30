@@ -185,6 +185,7 @@ def load_robots(url: str, out_dir: Path) -> tuple[int | None, str]:
     req = urllib.request.Request(robots_url, headers={"User-Agent": USER_AGENT})
     status: int | None = None
     body = ""
+    rate_limit(host)  # robots.txt is a request to the host too: same 1 req / 2 s budget
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
             status = int(resp.status)
