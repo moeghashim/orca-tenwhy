@@ -46,7 +46,7 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P3.1 | ⬜ | | | |
+| P3.1 | 🟡 | `TENWHY_REPO_BACKEND=local TENWHY_DB=/tmp/t.db bin/loopctl new "Boutique dental clinic in Amman" --url https://example.com` → `eng_d106615e` (exit 0). `sqlite3 /tmp/t.db "select id,customer_name,idea,site_url,status,repo_url from engagements"` → `eng_d106615e\|example.com\|Boutique dental clinic in Amman\|https://example.com\|new\|/Users/moeghashim/orca/projects/orca-tenwhy/state/remotes/example-com.git`. `git -C state/customers/example-com ls-remote origin` → `b997c8f70be7f0b595c225bd46594998597ba06e	HEAD` / `refs/heads/main` (exit 0). | _pending_ | _pending_ |
 | P3.2 | ⬜ | | | |
 | P3.3 | ⬜ | | | |
 | P3.4 | ⬜ | | | |
@@ -76,7 +76,7 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P8.1 | 🟡 | `node --test system/orchestrator/test_customer_repo.mjs` → `✔ generated repo matches §8 tree, lints, and local origin ls-remote exits 0` `pass 1` `fail 0` (exit 0). | _pending_ | _pending_ |
+| P8.1 | 🟡 | `node --test system/orchestrator/test_customer_repo.mjs` → `✔ generated repo matches §8 tree, lints, and local origin ls-remote exits 0` `pass 1` `fail 0` (exit 0). | `3ee29a1acfa0e857b9201db5a7bcb6d09c9c03c7` | _pending_ |
 
 ## Phase 6 — Ops dashboard
 
