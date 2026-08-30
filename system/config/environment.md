@@ -8,8 +8,8 @@ Nothing below is guessed; each value has the command that produced it. Items mar
 
 | Field | Value |
 |---|---|
-| Binary | `/opt/homebrew/bin/pi` (npm `@earendil-works/pi-coding-agent@0.84.1`) |
-| Version | `pi --version` → `0.84.1` (exit 0) |
+| Binary | `/opt/homebrew/bin/pi` (npm `@earendil-works/pi-coding-agent@0.84.4`) |
+| Version | `pi --version` → `0.84.4` (exit 0). **Note:** first check at 16:2x read `0.84.1`; pi self-updated to `0.84.4` during Phase 0 (startup network ops). Loop runs must pass `--offline` (or `PI_OFFLINE=1`) so the harness version cannot change mid-engagement; re-record on deliberate upgrades. |
 | Non-interactive invocation | `pi -p --mode json --provider <provider> --model <model> --thinking high --no-extensions --no-skills --no-prompt-templates --no-context-files --session-dir <dir> --session-id <uuid> "<prompt>"` |
 | Tool control | custom tools via extension file (`pi -e <ext.ts>`, `pi.registerTool({...})`); allowlist with `--tools <names>`; `--no-builtin-tools` keeps only extension tools (this is how `scrape` is exposed to the research loop only) |
 | Session / trace | JSONL at `<session-dir>/<cwd-slug>/<ISO-ts>_<session-id>.jsonl`. First line: `{"type":"session","version":3,"id":"<uuid>",...}`. `--session-id` lets the orchestrator pre-assign the id, so **trace ref = `pi://session/<session-id>`** and the file path is stored alongside it in `events.payload`. |
@@ -26,7 +26,7 @@ Risk note: Pi and Codex CLI each hold their own ChatGPT OAuth grant (`~/.pi/agen
 |---|---|
 | Binary / version | `/Users/moeghashim/.grok/bin/grok`; `grok --version` → `grok 1.0.13 (5e9a58528b76) [stable]` |
 | Auth | `grok models` → `You are logged in with grok.com.` (exit 0) — OAuth |
-| Models | `grok-4.6` (default = **"latest"**), `grok-4.5`. Usage reports the wire name `grok-4.6-build`. |
+| Models | `grok models` (exit 0) prints `Default model: grok-4.6` and lists `grok-4.6 (default)`, `grok-4.5`. **SOP "latest" = `grok-4.6`**: the CLI default per that command and the model exercised by the smoke below. Usage JSON reports the wire name `grok-4.6-build`. The Pi-side executor model id (runtime) is recorded under P0.1 after `/login xai`. |
 | Effort flag | `--reasoning-effort <EFFORT>` (alias `--effort`); `high` accepted |
 | Headless invocation | `grok -p "<prompt>" -m grok-4.6 --effort high --output-format json [--json-schema '<schema>'] [--disable-web-search] [--tools <list>] [--permission-mode bypassPermissions] [--cwd <dir>]`; multi-turn via `--resume <sessionId>` |
 | Trace | JSON output carries `sessionId` + `requestId`; `grok trace <sessionId> --local --json` exports `$GROK_HOME/trace-exports/<id>.tar.gz` |
@@ -69,7 +69,7 @@ Risk note: Pi and Codex CLI each hold their own ChatGPT OAuth grant (`~/.pi/agen
 | CLI | `stripe version` → `1.42.13` |
 | Auth | `stripe whoami` → `Account: 10claws, Inc. (acct_1TJah50q5LIoKwph)`, `Test mode key: available (expires 2026-11-28)` (exit 0) — Moe re-ran `stripe login` 2026-08-30 |
 | Plugin | `stripe plugin install projects` → `v0.36.0`; `stripe projects list` → 3 projects (exit 0) |
-| Scripting flags | `stripe projects add <provider/service> --json --non-interactive --accept-tos [--name <n>] [--config '<json>'] [--confirm-paid-service]`; env via `stripe projects env ...` / `stripe projects pull <projectId>` |
+| Scripting flags (**from `stripe projects add --help` only — not executed yet**; first real run is P5.1 against a throwaway project) | `stripe projects add <provider/service> --json --non-interactive --accept-tos [--name <n>] [--config '<json>'] [--confirm-paid-service]`; env via `stripe projects env ...` / `stripe projects pull <projectId>` |
 
 ## P0.7 Cloudflare deploy path
 
@@ -77,7 +77,7 @@ Risk note: Pi and Codex CLI each hold their own ChatGPT OAuth grant (`~/.pi/agen
 |---|---|
 | Wrangler | `wrangler --version` → `4.127.1` (global npm) |
 | Stripe Projects catalog | `stripe projects catalog cloudflare` → services: browser-run, containers, d1, hyperdrive, kv, queues, r2:bucket, registrar:domain, **workers** (free tier), workers-ai. **No `pages` service exists.** |
-| Chosen path | Stripe Projects provisions **`cloudflare/workers`** (`stripe projects add cloudflare/workers --json --non-interactive --accept-tos`), credentials land in the project env; `wrangler deploy` publishes `website/dist/` as **Workers static assets** (`wrangler.toml` `[assets] directory = "dist"`). Exact env var names get recorded at P5.1 with the throwaway project. |
+| Chosen path (**proposed — unexecuted until P5.1/P5.2**, where real output gets pasted) | Stripe Projects provisions **`cloudflare/workers`** (`stripe projects add cloudflare/workers --json --non-interactive --accept-tos`), credentials land in the project env; `wrangler deploy` publishes `website/dist/` as **Workers static assets** (`wrangler.toml` `[assets] directory = "dist"`). Exact env var names get recorded at P5.1 with the throwaway project. |
 | **Deviation to confirm** | SOP says "Cloudflare Pages"; Workers static assets is Cloudflare's successor to Pages and the only hosting service Stripe Projects offers for Cloudflare. **PENDING Moe: confirm.** |
 
 ## P0.8 Git identity ✓
