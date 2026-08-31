@@ -100,6 +100,8 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
 .loop-cols { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
 .card { border: 1px solid var(--ink); border-radius: 8px; background: #fff; padding: 18px 20px; }
 .card-h { font-size: 10.5px; letter-spacing: .05em; color: var(--muted); margin-bottom: 16px; }
+.it-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.it-when { margin-left: auto; }
 .it-row { display: grid; grid-template-columns: 26px 1fr; gap: 0 14px; margin-bottom: 8px; }
 .it-node { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-family: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace; font-size: 10.5px; border: 1px solid; }

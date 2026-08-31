@@ -293,7 +293,7 @@ function renderLoop(store, route, now, go) {
             { class: "it-top" },
             el("span", {}, `iteration ${it.n}`),
             badge("verdict", it.reviewer_verdict),
-            el("span", { class: "faint mono" }, rel(it.created_at, now)),
+            el("span", { class: "faint mono it-when" }, rel(it.created_at, now)),
           ),
           el("div", { class: "it-exec" }, it.executor_summary || ""),
           el("div", { class: "it-rev" }, `reviewer: ${it.reviewer_notes || ""}`),

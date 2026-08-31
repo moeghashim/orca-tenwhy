@@ -177,6 +177,19 @@ test("needs_human banner pins open failures to the right edge", () => {
   assert.match(banner.querySelector(".banner-left").textContent, /⚑ 1 runs need human input/);
 });
 
+test("iteration header separates label, verdict badge, and relative time with an 8px gap", () => {
+  const { root } = mount("#/runs/eng_0141/run_res_0141");
+  const top = root.querySelector(".it-top");
+  assert.ok(top);
+  const kids = [...top.children];
+  assert.equal(kids.length, 3);
+  assert.equal(kids[0].textContent, "iteration 1");
+  assert.match(kids[1].textContent, /revise/);
+  assert.ok(kids[2].classList.contains("it-when"));
+  const css = fs.readFileSync(new URL("./src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.it-top\s*\{[^}]*gap:\s*8px/s);
+});
+
 test("Runs header summary lists engagement and active counts", () => {
   const { root } = mount("#/runs");
   const sum = root.querySelector("[data-runs-summary]");
