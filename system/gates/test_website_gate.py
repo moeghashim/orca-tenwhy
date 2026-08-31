@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
@@ -113,7 +114,10 @@ class WebsiteGateTests(unittest.TestCase):
                 self.assertFalse(c["passed"], c)
                 self.assertEqual(c["detail"], "skipped: build_ok failed")
             return checks
-        skip_lh = os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1"
+        skip_lh = (
+            os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1"
+            and os.environ.get("TENWHY_DEV") == "1"
+        )
         for c in checks:
             if c["check_name"] == failed_name:
                 continue
@@ -125,7 +129,11 @@ class WebsiteGateTests(unittest.TestCase):
 
     def test_pass(self):
         checks = self._assert_case("pass", 0, None)
-        if os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") != "1":
+        skip_lh = (
+            os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1"
+            and os.environ.get("TENWHY_DEV") == "1"
+        )
+        if not skip_lh:
             self.assertRegex(checks[-1]["detail"], r"performance=\d+ accessibility=\d+")
 
     def test_fail_brand(self):
@@ -146,7 +154,34 @@ class WebsiteGateTests(unittest.TestCase):
     def test_fail_copy(self):
         self._assert_case("fail_copy", 1, "copy_grounded")
 
-    @unittest.skipIf(os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1", "lighthouse skipped")
+    def test_lighthouse_skip_requires_tenwhy_dev(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import lighthouse_skip_honoured  # noqa: E402
+
+        prev_skip = os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE")
+        prev_dev = os.environ.get("TENWHY_DEV")
+        try:
+            os.environ["WEBSITE_GATE_SKIP_LIGHTHOUSE"] = "1"
+            os.environ.pop("TENWHY_DEV", None)
+            self.assertFalse(lighthouse_skip_honoured())
+            os.environ["TENWHY_DEV"] = "1"
+            self.assertTrue(lighthouse_skip_honoured())
+            os.environ.pop("WEBSITE_GATE_SKIP_LIGHTHOUSE", None)
+            self.assertFalse(lighthouse_skip_honoured())
+        finally:
+            if prev_skip is None:
+                os.environ.pop("WEBSITE_GATE_SKIP_LIGHTHOUSE", None)
+            else:
+                os.environ["WEBSITE_GATE_SKIP_LIGHTHOUSE"] = prev_skip
+            if prev_dev is None:
+                os.environ.pop("TENWHY_DEV", None)
+            else:
+                os.environ["TENWHY_DEV"] = prev_dev
+
+    @unittest.skipIf(
+        os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1",
+        "lighthouse skipped",
+    )
     def test_fail_lighthouse(self):
         checks = self._assert_case("fail_lighthouse", 1, "lighthouse≥85")
         self.assertRegex(checks[-1]["detail"], r"performance=\d+ accessibility=\d+")

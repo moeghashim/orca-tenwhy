@@ -68,10 +68,13 @@ export async function defaultGateRunner({ loopName, workdir, loopRunId, dbPath }
   if (!dbPath) throw new Error("defaultGateRunner requires dbPath");
   const python = path.join(ROOT, "system/tools/.venv/bin/python");
   const script = path.isAbsolute(loopMod.gate) ? loopMod.gate : path.join(ROOT, loopMod.gate);
+  const gateEnv = { ...process.env };
+  delete gateEnv.WEBSITE_GATE_SKIP_LIGHTHOUSE;
+  delete gateEnv.TENWHY_DEV;
   const result = spawnSync(
     python,
     [script, "--workdir", workdir, "--db", dbPath, "--loop-run-id", loopRunId],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: gateEnv },
   );
   const stdout = (result.stdout || "").trim();
   if (!stdout) {

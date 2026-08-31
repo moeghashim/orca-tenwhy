@@ -8,12 +8,21 @@ import { absorbResearch as absorb } from "./knowledge.mjs";
 import { runLoop } from "./loop_runner.mjs";
 import { ROOT, loadLoopsConfig } from "./util.mjs";
 
+const SCRUBBED_GATE_KEYS = ["WEBSITE_GATE_SKIP_LIGHTHOUSE", "TENWHY_DEV"];
+
+export function scrubGateEnv(env = process.env) {
+  const out = { ...env };
+  for (const key of SCRUBBED_GATE_KEYS) delete out[key];
+  return out;
+}
+
 export function spawnGate({
   script,
   workdir,
   dbPath,
   loopRunId,
   python = path.join(ROOT, "system/tools/.venv/bin/python"),
+  env = process.env,
 }) {
   if (!script || !fs.existsSync(script)) {
     throw new Error(`gate script missing: ${script}`);
@@ -21,7 +30,7 @@ export function spawnGate({
   const result = spawnSync(
     python,
     [script, "--workdir", workdir, "--db", dbPath, "--loop-run-id", loopRunId],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: scrubGateEnv(env) },
   );
   const stdout = (result.stdout || "").trim();
   if (!stdout) {

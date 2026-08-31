@@ -31,3 +31,26 @@ test("gateRunner on a fixture gate script returns parsed checks", () => {
   assert.equal(checks[0].passed, true);
   assert.equal(checks[0].detail, "fixture");
 });
+
+test("spawnGate does not forward WEBSITE_GATE_SKIP_LIGHTHOUSE or TENWHY_DEV", () => {
+  const script = path.join(ROOT, "system/orchestrator/fixtures/echo_env_gate.py");
+  const prevSkip = process.env.WEBSITE_GATE_SKIP_LIGHTHOUSE;
+  const prevDev = process.env.TENWHY_DEV;
+  process.env.WEBSITE_GATE_SKIP_LIGHTHOUSE = "1";
+  process.env.TENWHY_DEV = "1";
+  try {
+    const checks = spawnGate({
+      script,
+      workdir: ROOT,
+      dbPath: "/tmp/unused.db",
+      loopRunId: "run_env",
+      env: process.env,
+    });
+    assert.equal(checks[0].detail, "[]");
+  } finally {
+    if (prevSkip === undefined) delete process.env.WEBSITE_GATE_SKIP_LIGHTHOUSE;
+    else process.env.WEBSITE_GATE_SKIP_LIGHTHOUSE = prevSkip;
+    if (prevDev === undefined) delete process.env.TENWHY_DEV;
+    else process.env.TENWHY_DEV = prevDev;
+  }
+});

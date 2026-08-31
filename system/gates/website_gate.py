@@ -388,8 +388,13 @@ def stop_pg(proc: subprocess.Popen) -> None:
             proc.kill()
 
 
+def lighthouse_skip_honoured() -> bool:
+    """Skip Lighthouse only when both the skip flag and TENWHY_DEV=1 are set."""
+    return os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1"
+
+
 def lighthouse_check(workdir: Path) -> dict:
-    if os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1":
+    if lighthouse_skip_honoured():
         return check("lighthouse≥85", True, "skipped: WEBSITE_GATE_SKIP_LIGHTHOUSE=1")
     web = workdir / "website"
     port = free_port()
