@@ -93,6 +93,18 @@ test("/api/snapshot from the seeded DB has comparisons with valid and flagged ce
   assert.equal(bloom.live_url, "https://bloomfloristry.example");
   const it = json.iterations.find((i) => i.id === "it_0141_1");
   assert.match(it.executor_summary, /Compiled firm profile/);
+  const researchChecks = json.gate_checks.filter((g) => g.loop_run_id === "run_res_0143");
+  assert.deepEqual(
+    researchChecks.map((g) => g.check_name),
+    ["schema_valid", "competitors≥5", "product_coverage≥25%", "enhancement_ideas≥3", "sources_complete"],
+  );
+  assert.ok(researchChecks.every((g) => g.passed === 1 || g.passed === true));
+  const bloomWebChecks = json.gate_checks.filter((g) => g.loop_run_id === "run_web_0137");
+  assert.deepEqual(
+    bloomWebChecks.map((g) => g.check_name),
+    ["brand_assets_valid", "build_ok", "links_ok", "copy_grounded", "lighthouse≥85"],
+  );
+  assert.ok(bloomWebChecks.every((g) => g.passed === 1 || g.passed === true));
 });
 
 test("insert an events row via sqlite3 while an SSE client is connected → patch received in < 2 s with the re-read entity", async (t) => {

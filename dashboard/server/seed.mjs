@@ -274,6 +274,18 @@ export function seedDemo({ dbPath, repoRoot = ROOT, now = utcNow() } = {}) {
     "pi://trace/harbor",
     now,
   );
+  for (const [id, name] of [
+    ["gc_0143_1", "schema_valid"],
+    ["gc_0143_2", "competitors≥5"],
+    ["gc_0143_3", "product_coverage≥25%"],
+    ["gc_0143_4", "enhancement_ideas≥3"],
+    ["gc_0143_5", "sources_complete"],
+  ]) {
+    db.prepare(
+      `INSERT INTO gate_checks (id, loop_run_id, check_name, passed, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(id, "run_res_0143", name, 1, "ok", now);
+  }
   db.prepare(
     `INSERT INTO scrapes (id, loop_run_id, url, http_status, content_path, created_at)
      VALUES (?, ?, ?, ?, NULL, ?)`,
@@ -335,6 +347,18 @@ export function seedDemo({ dbPath, repoRoot = ROOT, now = utcNow() } = {}) {
     `INSERT INTO loop_runs (id, engagement_id, loop_name, attempt, change_request_id, status, pi_trace_ref, adjusted_instructions, started_at, finished_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run("run_web_0137", "eng_0137", "website", 0, null, "gate_passed", null, null, now, now);
+  for (const [id, name] of [
+    ["gc_0137_1", "brand_assets_valid"],
+    ["gc_0137_2", "build_ok"],
+    ["gc_0137_3", "links_ok"],
+    ["gc_0137_4", "copy_grounded"],
+    ["gc_0137_5", "lighthouse≥85"],
+  ]) {
+    db.prepare(
+      `INSERT INTO gate_checks (id, loop_run_id, check_name, passed, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(id, "run_web_0137", name, 1, "ok", now);
+  }
   insertEvent(db, {
     engagementId: "eng_0137",
     kind: "engagement.complete",
