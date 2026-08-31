@@ -394,26 +394,39 @@ export async function runDaemon({
   const resolved = opts instanceof Promise ? await opts : opts;
   const config = resolved.config || (await loadLoopsConfig());
   let stopped = false;
+  let wakeSleep = null;
   const stop = () => {
     stopped = true;
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-  while (!stopped) {
-    const db = openDb(dbPath);
-    try {
-      await tick({ db, dbPath, config, ...resolved });
-    } finally {
-      db.close();
+    releaseDaemonLock(lockPath);
+    if (wakeSleep) {
+      const wake = wakeSleep;
+      wakeSleep = null;
+      wake();
     }
-    if (stopped) break;
-    await new Promise((resolve) => {
-      const timer = setTimeout(resolve, intervalMs);
-      if (stopped) {
-        clearTimeout(timer);
-        resolve();
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+  try {
+    while (!stopped) {
+      const db = openDb(dbPath);
+      try {
+        await tick({ db, dbPath, config, ...resolved });
+      } finally {
+        db.close();
       }
-    });
+      if (stopped) break;
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, intervalMs);
+        wakeSleep = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+      wakeSleep = null;
+    }
+  } finally {
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
   }
   } finally {
     releaseDaemonLock(lockPath);

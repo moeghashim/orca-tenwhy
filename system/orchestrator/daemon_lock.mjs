@@ -15,26 +15,39 @@ function isAlive(pid, killFn) {
   }
 }
 
+function unlinkOwn(tmpPath) {
+  try {
+    fs.unlinkSync(tmpPath);
+  } catch {
+    /* */
+  }
+}
+
 export function acquireDaemonLock(
   lockPath,
   { pid = process.pid, kill = process.kill.bind(process) } = {},
 ) {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-  const flags = fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY;
-  const tryCreate = () => {
-    const fd = fs.openSync(lockPath, flags);
-    try {
-      fs.writeSync(fd, `${pid}\n`);
-    } finally {
-      fs.closeSync(fd);
-    }
+  const dir = path.dirname(lockPath);
+  const base = path.basename(lockPath);
+  const tmpPath = path.join(dir, `${base}.${pid}.tmp`);
+  fs.writeFileSync(tmpPath, `${pid}\n`);
+
+  const tryLink = () => {
+    fs.linkSync(tmpPath, lockPath);
+    unlinkOwn(tmpPath);
     return { ok: true, pid };
   };
+
   try {
-    return tryCreate();
+    return tryLink();
   } catch (err) {
-    if (err.code !== "EEXIST") throw err;
+    if (err.code !== "EEXIST") {
+      unlinkOwn(tmpPath);
+      throw err;
+    }
   }
+
   let existing = null;
   try {
     existing = parsePid(fs.readFileSync(lockPath, "utf8"));
@@ -42,18 +55,31 @@ export function acquireDaemonLock(
     existing = null;
   }
   if (existing && isAlive(existing, kill)) {
+    unlinkOwn(tmpPath);
     return { ok: false, pid: existing };
   }
+
+  const stalePath = path.join(dir, `${base}.stale.${Date.now()}`);
   try {
-    fs.unlinkSync(lockPath);
-  } catch {
-    /* */
-  }
-  try {
-    return tryCreate();
+    fs.renameSync(lockPath, stalePath);
   } catch (err) {
+    if (err.code !== "ENOENT") {
+      unlinkOwn(tmpPath);
+      throw err;
+    }
+  }
+
+  try {
+    return tryLink();
+  } catch (err) {
+    unlinkOwn(tmpPath);
     if (err.code === "EEXIST") {
-      const again = parsePid(fs.readFileSync(lockPath, "utf8"));
+      let again = null;
+      try {
+        again = parsePid(fs.readFileSync(lockPath, "utf8"));
+      } catch {
+        again = null;
+      }
       return { ok: false, pid: again };
     }
     throw err;

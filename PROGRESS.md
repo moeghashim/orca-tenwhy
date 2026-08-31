@@ -80,6 +80,8 @@ P3-fix7 item 1: `node --test system/orchestrator/test_log.mjs` → `✔ tick emi
 
 P3-fix7 item 2: `node --test system/orchestrator/test_loop_runner.mjs` → `✔ K: website prepare success emits loop_run.prepared then iterations` `tests 14` `pass 14` `fail 0` `exit=0`. Prepare-end log and `loop_run.prepared` include `session`, `exit`, `ms`, `tools`. `_pending_`
 
+P3-fix7 item 3: `node --test --test-timeout=20000 system/orchestrator/test_daemon_lock.mjs` → `✔ daemon lock refuses a live pid` · `✔ daemon lock replaces a dead pid` · `✔ runDaemon exits 3 when another daemon holds the lock` · `✔ two acquirers racing: exactly one succeeds, the other exits 3` · `✔ SIGINT to a holder removes its lock; foreign pid is left untouched` `tests 5` `pass 5` `fail 0` `exit=0`. `_pending_`
+
 P4-fix5 (round 5 item 4): `node --test system/orchestrator/test_loop_runner.mjs system/orchestrator/test_failure_policy.mjs system/loops/company-research/test_prompts.mjs` → `✔ executor prompt on iteration 2 contains URLs scraped in iteration 1` · `✔ iteration-cap retry cites check 5 from reviewer notes when gate_checks is empty` `tests 25` `pass 25` `fail 0` `exit=0`. Executor prompt gets the run's scrape ledger every iteration; retry prefix cites `sources_complete` from reviewer notes when the run ends by iteration cap with no gate_checks. `_pending_`
 
 P4-fix5 items 6–7 (Codex `P4 issues #r7`): `node --test system/orchestrator/test_loop_runner.mjs system/orchestrator/test_failure_policy.mjs system/loops/company-research/test_prompts.mjs` → `✔ scrapes ledger keeps insertion order when created_at ties` · `✔ failedChecksFromReviewerNotes treats FAIL/Fail as fail` · `✔ validateVerdict accepts uppercase PASS/FAIL tokens` `tests 28` `pass 28` `fail 0` `exit=0`. `_pending_`
