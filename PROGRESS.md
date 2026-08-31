@@ -165,7 +165,7 @@ P7-fix4 item 10 (Codex `P7 issues #r4`): `node --test "dashboard/server/*.test.m
 
 | Item | Status | Evidence |
 |---|---|---|
-| `make verify` exits 0 | 🟡 | orchestrator isolated run @862ee55 (HEAD after round 7) → **exit 0**: identity audit (184 commits), schema 7/7, lint, 11 scrape, 12 research-gate, 34 website-gate (sandboxed incl. Lighthouse), 125 node tests (2026-08-31). Final mark after round 8 + the two live-run gate/prompt hotfixes are reviewed. |
+| `make verify` exits 0 | 🟡 | orchestrator isolated run @862ee55 (HEAD after round 7) → **exit 0**: identity audit (184 commits), schema 7/7, lint, 11 scrape, 12 research-gate, 34 website-gate (sandboxed incl. Lighthouse), 125 node tests (2026-08-31). Final mark after round 8 + the two live-run gate/prompt hotfixes are reviewed. Re-run at `e2075bb` (Grok round 8 + gate hotfixes `b912281`/`b0b1dd1`/`e2075bb`): exit 0 — 129 node tests, 61 sandboxed gate tests (11+12+38), 198-commit identity audit ok. |
 | Real engagement: research gate passed (P4.3) | ✅ | `eng_e15d4850` / `run_79630a43` gate_passed 5/5, 2026-08-31 09:54:40Z (see P4.3 row) |
 | Reached `awaiting_approval` (P5.5) | ⬜ | |
 | Approved via customer flow + live URL 200 (P5.6) | ⬜ | |
