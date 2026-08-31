@@ -19,4 +19,8 @@
 8. **Narrow the Homebrew grant** (`build.sb:19`, `preview.sb:16`): replace `__BREW_PREFIX__` (all of `/opt/homebrew`) with the realpath of the node binary's Cellar directory (`$(dirname $(dirname $(realpath /opt/homebrew/bin/node)))`, e.g. `/opt/homebrew/Cellar/node/24.x.y`) plus `/opt/homebrew/lib/node_modules` only if the gate needs it (it should not — vite is installed in the temp tree). Test: the generated profile contains no bare `/opt/homebrew` subpath grant and `pass` still builds.
 9. **Real-build denial coverage for `$HOME`** (`test_website_gate.py:171`): the Vite-build fixture must also import `/Users/moeghashim/.gitconfig?raw` (and `/@fs/Users/moeghashim/.gitconfig?raw`) and assert the build fails or `dist/` contains no `[user]`/email content — unconditionally, not only via `node -e`.
 
+## Item 7 follow-up — Codex `REVIEWED: P7 issues #r4` (2026-08-31); commit `P7-fix4: …`
+
+10. **Stale = before the cutoff only** (`dashboard/web/src/customer/progress.js:54`): compute the cutoff as the `created_at` of the latest `engagement.change_requested` / `approval.processed(request_changes)` event; a website run is stale iff its `started_at` (or its first event) precedes that cutoff. Later runs — including orchestrator retries (attempt 1/2) of the new chain — are live and drive steps 4–5. Test: change-request → new run attempt 0 fails gate → retry attempt 1 → its events advance the steps (not marked stale).
+
 Finish with `DONE fix4 <hash…>` — only hashes in `git log`.
