@@ -1,0 +1,25 @@
+(version 1)
+; Build phase: deny-default. file-read* of "/" is required so dyld can map the
+; firmlinked shared cache (listing /usr+/System+/private aborts node with SIGABRT).
+; HOME and /etc/hosts are then denied; temp tree + npm cache are re-allowed.
+(deny default)
+(allow file-read-metadata)
+(allow file-map-executable)
+(allow file-read*)
+(deny file-read* (subpath "__OPERATOR_HOME__"))
+(allow file-read* (subpath "__TREE__") (subpath "__CACHE__") (subpath "__HOME__") (subpath "__TMPDIR__"))
+(deny file-read* (literal "/etc/hosts") (literal "/private/etc/hosts"))
+(allow file-write* (subpath "__TREE__") (subpath "__TMPDIR__") (literal "/dev/null") (subpath "/dev"))
+; node + esbuild (esbuild lives under the temp tree after install)
+(allow process-exec (literal "__NODE__") (literal "__NODE_REAL__") (subpath "__TREE__"))
+(allow process-fork)
+(allow sysctl-read)
+(allow mach-lookup)
+(allow signal)
+(allow system-socket)
+(allow file-ioctl)
+(allow ipc-posix-shm)
+(allow process-info*)
+(allow iokit-open)
+(allow mach-priv-host-port)
+; network: none

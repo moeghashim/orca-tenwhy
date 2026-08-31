@@ -8,8 +8,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -162,10 +164,15 @@ class WebsiteGateTests(unittest.TestCase):
         NPM_CACHE.mkdir(parents=True, exist_ok=True)
         env = gate_env(home, NPM_CACHE)
         pwn = Path.home() / "pwned-tenwhy-gate-test"
+        gitconfig = str(Path.home() / ".gitconfig")
         if pwn.exists():
             pwn.unlink()
         (tree / "try.mjs").write_text(
             "import fs from 'node:fs';\n"
+            "function read(p){ try { fs.readFileSync(p); console.error('READ_OK', p); }"
+            "catch (e) { console.error('READ_DENY', p, e.code); } }\n"
+            "read('/etc/hosts');\n"
+            f"read({gitconfig!r});\n"
             f"try {{ fs.writeFileSync({str(pwn)!r}, 'x'); console.log('WROTE'); }}"
             "catch (e) { console.error('WRITE', e.code); }\n"
             "try { const r = await fetch('https://example.com'); console.error('FETCH', r.status); }"
@@ -183,13 +190,74 @@ class WebsiteGateTests(unittest.TestCase):
                 timeout=30,
             )
             blob = (result.stderr or "") + (result.stdout or "")
+            self.assertEqual(result.returncode, 0, blob)
             self.assertFalse(pwn.exists(), blob)
-            self.assertTrue("EPERM" in blob or "WRITE" in blob, blob)
+            self.assertIn("READ_DENY /etc/hosts", blob)
+            self.assertIn("READ_DENY", blob)
+            self.assertIn("EPERM", blob)
             self.assertNotIn("FETCH 200", blob)
+            self.assertNotIn("READ_OK /etc/hosts", blob)
+            self.assertNotIn("READ_OK " + gitconfig, blob)
         finally:
             if pwn.exists():
                 pwn.unlink()
             shutil.rmtree(tree, ignore_errors=True)
+
+    @unittest.skipIf(
+        os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1",
+        "lighthouse skipped",
+    )
+    def test_lighthouse_unrelated_loopback_port_sees_no_request(self):
+        hits = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+            def log_message(self, fmt, *args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        workdir = _copy_case("pass")
+        index = workdir / "website" / "index.html"
+        html = index.read_text(encoding="utf-8")
+        probe = f'<script>fetch("http://127.0.0.1:{port}/unrelated-probe").catch(function(){{}})</script>'
+        index.write_text(html.replace("</body>", probe + "</body>"), encoding="utf-8")
+        tmp = tempfile.mkdtemp(prefix="tenwhy-webgate-")
+        db_path = Path(tmp) / "t.db"
+        subprocess.check_call(["bash", str(MIGRATE), str(db_path)], cwd=str(ROOT))
+        try:
+            proc = subprocess.run(
+                [
+                    str(PYTHON),
+                    str(GATE),
+                    "--workdir",
+                    str(workdir),
+                    "--db",
+                    str(db_path),
+                    "--loop-run-id",
+                    f"run_{uuid.uuid4().hex[:8]}",
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+            )
+            self.assertTrue(proc.stdout.strip(), proc.stderr)
+            checks = json.loads(proc.stdout.strip().splitlines()[-1])
+            lh = next(c for c in checks if c["check_name"] == "lighthouse≥85")
+            self.assertTrue(lh["passed"], checks)
+            self.assertEqual(hits, [], f"unrelated port received {hits}")
+        finally:
+            server.shutdown()
+            server.server_close()
+            shutil.rmtree(workdir, ignore_errors=True)
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_fail_links(self):
         checks = self._assert_case("fail_links", 1, "links_ok")

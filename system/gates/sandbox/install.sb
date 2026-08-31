@@ -1,0 +1,9 @@
+(version 1)
+; Install phase: npm itself is the threat (allowlisted manifest, --ignore-scripts,
+; integrity-verified vite tarball). Allow-default with write confinement and $HOME deny.
+(allow default)
+(deny file-write*)
+(allow file-write* (subpath "__TREE__") (subpath "__CACHE__") (subpath "__HOME__") (subpath "__TMPDIR__") (literal "/dev/null"))
+(deny file-read* (subpath "__OPERATOR_HOME__"))
+(allow file-read* (subpath "__TREE__") (subpath "__CACHE__") (subpath "__HOME__") (subpath "__TMPDIR__"))
+(allow network*)

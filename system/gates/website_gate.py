@@ -29,10 +29,13 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "brand_tokens_schema.json"
 PKG_SCHEMA_PATH = Path(__file__).resolve().parent / "website_package_schema.json"
 VITE_TEMPLATE = Path(__file__).resolve().parent / "vite.config.template.mjs"
 SANDBOX_EXEC = Path("/usr/bin/sandbox-exec")
+SANDBOX_DIR = Path(__file__).resolve().parent / "sandbox"
 NPM_CACHE = ROOT / "state" / "npm-cache"
 VITE_BIN = Path("node_modules/vite/bin/vite.js")
 GATE_PATH = "/opt/homebrew/bin:/usr/bin:/bin"
 OPERATOR_HOME = str(Path.home())
+CRASHPAD_DIR = str(Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Crashpad")
+PREFS_DIR = str(Path.home() / "Library" / "Preferences")
 SKIP_BUILD = "skipped: build_ok failed"
 CHECK_NAMES = [
     "brand_assets_valid",
@@ -176,27 +179,57 @@ def validate_package(pkg: dict) -> str | None:
     return None
 
 
-def seatbelt_profile(phase: str, tree: Path, cache: Path, home: Path) -> str:
-    writes = [str(tree), str(cache), str(home), "/private/var/folders", "/private/tmp"]
-    write_rules = "\n".join(f'(allow file-write* (subpath "{p}"))' for p in writes)
-    if phase == "install":
-        net = "(allow network*)"
-    elif phase == "build":
-        net = "(deny network*)"
-    else:
-        net = '(deny network*)\n(allow network* (local ip "localhost:*"))\n(allow network* (remote ip "localhost:*"))'
-    home_deny = OPERATOR_HOME
-    return f"""(version 1)
-(allow default)
-(deny file-write*)
-{write_rules}
-(allow file-write* (literal "/dev/null"))
-(deny file-read* (subpath "{home_deny}"))
-(allow file-read* (subpath "{tree}"))
-(allow file-read* (subpath "{cache}"))
-(allow file-read* (subpath "{home}"))
-{net}
-"""
+def node_paths() -> tuple[str, str]:
+    node = shutil.which("node") or "/opt/homebrew/bin/node"
+    try:
+        real = str(Path(node).resolve())
+    except OSError:
+        real = node
+    return node, real
+
+
+def darwin_user_temp() -> str:
+    result = subprocess.run(["getconf", "DARWIN_USER_TEMP_DIR"], capture_output=True, text=True)
+    raw = (result.stdout or "").strip() or tempfile.gettempdir()
+    try:
+        return str(Path(raw).resolve())
+    except OSError:
+        return raw
+
+
+def seatbelt_profile(
+    phase: str,
+    tree: Path,
+    cache: Path,
+    home: Path,
+    *,
+    preview_port: int | None = None,
+    devtools_port: int | None = None,
+    tmpdir: Path | None = None,
+) -> str:
+    template = SANDBOX_DIR / f"{phase}.sb"
+    if not template.is_file():
+        raise FileNotFoundError(f"sandbox profile missing: {template}")
+    node, node_real = node_paths()
+    tmp = tmpdir or (Path(home) / "tmp")
+    text = template.read_text(encoding="utf-8")
+    repl = {
+        "__TREE__": str(tree),
+        "__CACHE__": str(cache),
+        "__HOME__": str(home),
+        "__TMPDIR__": str(tmp),
+        "__NODE__": node,
+        "__NODE_REAL__": node_real,
+        "__OPERATOR_HOME__": OPERATOR_HOME,
+        "__USER_TEMP__": darwin_user_temp(),
+        "__CRASHPAD__": CRASHPAD_DIR,
+        "__PREFS__": PREFS_DIR,
+        "__PREVIEW_PORT__": str(preview_port or 0),
+        "__DEVTOOLS_PORT__": str(devtools_port or 0),
+    }
+    for key, value in repl.items():
+        text = text.replace(key, value)
+    return text
 
 
 def gate_env(home: Path, cache: Path) -> dict:
@@ -227,11 +260,26 @@ def run_in_sandbox(
     home: Path,
     env: dict,
     timeout: int = BUILD_TIMEOUT,
+    preview_port: int | None = None,
+    devtools_port: int | None = None,
 ) -> subprocess.CompletedProcess:
     if not SANDBOX_EXEC.is_file():
         return subprocess.CompletedProcess(argv, 127, "", "sandbox unavailable")
     profile = tree / f".seatbelt-{phase}.sb"
-    profile.write_text(seatbelt_profile(phase, tree, cache, home), encoding="utf-8")
+    tmpdir = Path(env.get("TMPDIR") or (home / "tmp"))
+    try:
+        body = seatbelt_profile(
+            phase,
+            tree,
+            cache,
+            home,
+            preview_port=preview_port,
+            devtools_port=devtools_port,
+            tmpdir=tmpdir,
+        )
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(argv, 127, "", "sandbox unavailable")
+    profile.write_text(body, encoding="utf-8")
     cmd = [str(SANDBOX_EXEC), "-f", str(profile), *argv]
     try:
         return subprocess.run(cmd, cwd=tree, env=env, capture_output=True, text=True, timeout=timeout)
@@ -756,12 +804,13 @@ def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
     if tree is None or not (tree / VITE_BIN).is_file():
         return check("lighthouse≥85", False, "chrome launch failed: preview tree missing")
     port = free_port()
-    chrome_dir = tree / "chrome-user"
+    devtools_port = free_port()
+    chrome_dir = tree / "lhprofile"
     chrome_dir.mkdir(exist_ok=True)
     out_json = tree / "lh.json"
     chrome_flags = (
-        f"--headless=new --user-data-dir={chrome_dir} "
-        '--host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"'
+        f"--headless=new --no-sandbox --disable-gpu --disable-breakpad "
+        f"--user-data-dir={chrome_dir}"
     )
     preview_cmd = [
         "node",
@@ -775,9 +824,25 @@ def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
     ]
     if not SANDBOX_EXEC.is_file():
         return check("lighthouse≥85", False, "sandbox unavailable")
-    profile = tree / ".seatbelt-preview.sb"
-    profile.write_text(seatbelt_profile("preview", tree, NPM_CACHE, ctx.home or tree), encoding="utf-8")
     env = ctx.env or gate_env(ctx.home or tree, NPM_CACHE)
+    home = ctx.home or tree
+    tmpdir = Path(env.get("TMPDIR") or (home / "tmp"))
+    profile = tree / ".seatbelt-preview.sb"
+    try:
+        profile.write_text(
+            seatbelt_profile(
+                "preview",
+                tree,
+                NPM_CACHE,
+                home,
+                preview_port=port,
+                devtools_port=devtools_port,
+                tmpdir=tmpdir,
+            ),
+            encoding="utf-8",
+        )
+    except FileNotFoundError:
+        return check("lighthouse≥85", False, "sandbox unavailable")
     preview = subprocess.Popen(
         [str(SANDBOX_EXEC), "-f", str(profile), *preview_cmd],
         cwd=tree,
@@ -802,18 +867,22 @@ def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
             "--only-categories=performance,accessibility",
             "--output=json",
             f"--output-path={out_json}",
+            "--port",
+            str(devtools_port),
             f"--chrome-flags={chrome_flags}",
             "--quiet",
         ]
         try:
             lh = run_in_sandbox(
-                "preview",
+                "lighthouse",
                 lh_cmd,
                 tree=tree,
                 cache=NPM_CACHE,
-                home=ctx.home or tree,
+                home=home,
                 env=env,
                 timeout=120,
+                preview_port=port,
+                devtools_port=devtools_port,
             )
         except subprocess.TimeoutExpired:
             return check("lighthouse≥85", False, "lighthouse timed out")
