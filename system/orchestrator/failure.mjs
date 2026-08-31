@@ -11,6 +11,31 @@ function queueRetry(db, { engagementId, loopName, attempt, changeRequestId, adju
   return id;
 }
 
+const RESEARCH_CHECK_NAMES = [
+  "schema_valid",
+  "competitors≥5",
+  "product_coverage≥25%",
+  "enhancement_ideas≥3",
+  "sources_complete",
+];
+
+export function failedChecksFromReviewerNotes(notes) {
+  const failed = [];
+  for (const line of String(notes ?? "").split(/\r?\n/)) {
+    const t = line.trim();
+    const m = t.match(/^(\d+)\.(?!\d)\s*(.*)$/);
+    if (!m) continue;
+    const rest = m[2] || "";
+    if (!/(?:^|[^A-Za-z])(?:fail|fails|failed)(?:[^A-Za-z]|$)|[✕]/.test(rest)) continue;
+    const n = Number(m[1]);
+    failed.push({
+      check_name: RESEARCH_CHECK_NAMES[n - 1] || `check ${n}`,
+      detail: t,
+    });
+  }
+  return failed;
+}
+
 export function ensureAdjustedInstructions(text, failedChecks, reviewerNotes) {
   let out = String(text ?? "").trim();
   const notes = String(reviewerNotes ?? "");
@@ -29,7 +54,7 @@ export function ensureAdjustedInstructions(text, failedChecks, reviewerNotes) {
 
 export async function handleGateFailed({ db, config, eng, run, model }) {
   const retryCap = config?.caps?.retry_cap ?? 2;
-  const failedChecks = db
+  let failedChecks = db
     .prepare("SELECT check_name, detail, passed FROM gate_checks WHERE loop_run_id = ?")
     .all(run.id)
     .filter((c) => !c.passed);
@@ -39,6 +64,9 @@ export async function handleGateFailed({ db, config, eng, run, model }) {
     )
     .get(run.id);
   const reviewerNotes = lastIter?.reviewer_notes ?? "";
+  if (!failedChecks.length) {
+    failedChecks = failedChecksFromReviewerNotes(reviewerNotes);
+  }
 
   if (run.attempt < retryCap) {
     const nextAttempt = run.attempt + 1;

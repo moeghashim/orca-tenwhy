@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createFixtureAdapter } from "./adapters/fixture.mjs";
 import { runLoop } from "./loop_runner.mjs";
+import { utcNow } from "./util.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const CONFIG = {
@@ -363,6 +364,61 @@ test("H: executor output with no JSON block → revise FORMAT, reviewer never ca
     .prepare("SELECT payload FROM events WHERE loop_run_id = ? AND kind = 'iteration.recorded' ORDER BY id LIMIT 1")
     .get(result.loopRunId);
   assert.equal(JSON.parse(ev.payload).materialize, false);
+});
+
+test("executor prompt on iteration 2 contains URLs scraped in iteration 1", async (t) => {
+  const prompts = [];
+  const inner = createFixtureAdapter({
+    executor: [withResearchJson("draft-1"), withResearchJson("draft-2")],
+    reviewer: [
+      JSON.stringify({ verdict: "revise", notes: checkNotes("needs sources") }),
+      JSON.stringify({ verdict: "approve", notes: checkNotes("ok") }),
+    ],
+  });
+  const capturing = {
+    async run(args) {
+      if (args.role === "executor") {
+        prompts.push(args.prompt);
+        const result = await inner.run(args);
+        if (args.n === 1) {
+          const now = utcNow();
+          t.db.prepare(
+            "INSERT INTO scrapes (id, loop_run_id, url, http_status, content_path, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+          ).run("sc_ok", args.loopRunId, "https://alpha.example/menu", 200, now);
+          t.db.prepare(
+            "INSERT INTO scrapes (id, loop_run_id, url, http_status, content_path, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+          ).run("sc_no", args.loopRunId, "https://blocked.example/robots", null, now);
+        }
+        return result;
+      }
+      return inner.run(args);
+    },
+  };
+  const ctx = setup();
+  t.db = ctx.db;
+  t.after(() => {
+    ctx.db.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  });
+  const result = await runLoop({
+    db: ctx.db,
+    dbPath: ctx.dbPath,
+    loopName: "company-research",
+    engagementId: ctx.engagementId,
+    attempt: 0,
+    workdir: ctx.workdir,
+    config: CONFIG,
+    adapter: capturing,
+    gateRunner: async () => [{ check_name: "ok", passed: 1, detail: "ok" }],
+  });
+  assert.equal(result.status, "gate_passed");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0], /every row of the ledger below verbatim/);
+  assert.doesNotMatch(prompts[0], /https:\/\/alpha\.example\/menu/);
+  assert.match(prompts[1], /https:\/\/alpha\.example\/menu/);
+  assert.match(prompts[1], /https:\/\/blocked\.example\/robots/);
+  assert.match(prompts[1], /\| 200 \|/);
+  assert.match(prompts[1], /\| refused \|/);
 });
 
 function designerFence() {

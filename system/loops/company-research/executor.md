@@ -20,7 +20,10 @@ Site URL: {{site_url}}
 
 4. ≥ 3 `enhancement_ideas`, each with a non-empty `rationale` grounded in a competitor observation.
 
-5. `SOURCES_MD`: a markdown table of **every** scrape attempted in this run — `| url | http_status | note |` — including refusals (`refused: robots`) and non-200s. The gate cross-checks this against the `scrapes` table, so it must be complete.
+5. `SOURCES_MD`: a markdown table of **every** scrape attempted in this run — `| url | http_status | note |` — including refusals (`refused: robots`) and non-200s. The gate cross-checks this against the `scrapes` table, so it must be complete. `SOURCES_MD` must contain **every row of the ledger below verbatim** (`| url | http_status | note |`, `refused` for NULL) — including duplicates and non-200s — plus any new scrapes you make in this turn; do not drop rows.
+
+## Scrape ledger for this loop run
+{{scrapes_table}}
 
 6. End with a single fenced ```json block of shape `{"RESEARCH": <RESEARCH.json object>, "SOURCES_MD": "<markdown string>"}`. No prose after it.
 

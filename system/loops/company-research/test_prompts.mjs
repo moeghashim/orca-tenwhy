@@ -30,6 +30,8 @@ test("executor and reviewer templates render all variables", () => {
   assert.match(exec, /Cite failed check competitors≥5/);
   assert.match(exec, /1\. schema ok but 2\. only four competitors/);
   assert.match(exec, /scrape/);
+  assert.match(exec, /every row of the ledger below verbatim/);
+  assert.match(exec, /https:\/\/example.com \| 200/);
   const rev = reviewerPrompt(VARS);
   assert.match(rev, /Acme Dental/);
   assert.match(rev, /Boutique dental clinic in Amman/);

@@ -130,10 +130,15 @@ function buildExecutorPrompt({
   previousNotes,
   workdir,
   vars = {},
+  db = null,
+  loopRunId = null,
 }) {
+  const scrapes_table =
+    db && loopRunId ? scrapesTable(db, loopRunId) : (vars.scrapes_table ?? "(no scrapes rows)");
   if (loopMod?.executorPrompt) {
     let prompt = loopMod.executorPrompt({
       ...vars,
+      scrapes_table,
       adjusted_instructions: adjustedInstructions ?? "",
       previous_reviewer_notes: previousNotes ?? "",
       n,
@@ -172,14 +177,16 @@ export function readExecutorOutput(outputPath, max = REVIEWER_CONTENT_MAX) {
   }
 }
 
-function scrapesTable(db, loopRunId) {
+export function scrapesTable(db, loopRunId) {
   const rows = db
-    .prepare("SELECT url, http_status FROM scrapes WHERE loop_run_id = ? ORDER BY created_at, url")
+    .prepare("SELECT url, http_status FROM scrapes WHERE loop_run_id = ? ORDER BY created_at, rowid")
     .all(loopRunId);
-  if (!rows.length) return "(no scrapes rows)";
-  return ["| url | http_status |", "| --- | --- |", ...rows.map((r) => `| ${r.url} | ${r.http_status ?? ""} |`)].join(
-    "\n",
-  );
+  const lines = ["| url | http_status | note |", "| --- | --- | --- |"];
+  for (const r of rows) {
+    const status = r.http_status == null || r.http_status === "" ? "refused" : String(r.http_status);
+    lines.push(`| ${r.url} | ${status} | |`);
+  }
+  return lines.join("\n");
 }
 
 function readOptional(filePath) {
@@ -431,6 +438,8 @@ export async function runLoop({
       previousNotes,
       workdir,
       vars,
+      db,
+      loopRunId,
     });
     let execResult;
     try {

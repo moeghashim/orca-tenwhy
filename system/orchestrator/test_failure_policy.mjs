@@ -140,3 +140,60 @@ test("retries stay distinct when the model fixture returns the same text twice",
   db.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test("iteration-cap retry cites check 5 from reviewer notes when gate_checks is empty", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-fail-cap-"));
+  const dbPath = path.join(tmp, "t.db");
+  const { openDb } = await import("./util.mjs");
+  const db = openDb(dbPath);
+  const workdir = path.join(tmp, "state/customers/acme");
+  generateCustomerRepo({
+    slug: "acme",
+    customerName: "Acme",
+    idea: "clinic",
+    siteUrl: "",
+    targetDir: workdir,
+  });
+  const engId = "eng_fail002";
+  const now = utcNow();
+  db.prepare(
+    `INSERT INTO engagements (id, customer_name, idea, site_url, repo_url, status, created_at, updated_at)
+     VALUES (?, 'Acme', 'clinic', NULL, ?, 'new', ?, ?)`,
+  ).run(engId, workdir, now, now);
+  const notes = [
+    "1. pass — RESEARCH.json matches the schema extra words.",
+    "2. pass — five competitors each have a 200 scrape URL.",
+    "3. pass — product coverage is 50 percent with priced sources.",
+    "4. pass — three enhancement_ideas have rationale.",
+    "5. fail — SOURCES.md omits scrape rows from the ledger.",
+  ].join("\n");
+  await tick({
+    db,
+    config: CONFIG,
+    repoRoot: tmp,
+    runLoop: async ({ db: runDb, loopRunId }) => {
+      const ts = utcNow();
+      runDb.prepare("UPDATE loop_runs SET status = 'running', started_at = ? WHERE id = ?").run(ts, loopRunId);
+      runDb.prepare(
+        `INSERT INTO iterations (id, loop_run_id, n, executor_output_path, reviewer_verdict, reviewer_notes, pi_trace_ref, created_at)
+         VALUES (?, ?, 4, NULL, 'revise', ?, 'fixture://executor/4', ?)`,
+      ).run(prefixedId("it"), loopRunId, notes, ts);
+      runDb.prepare("UPDATE loop_runs SET status = 'gate_failed', finished_at = ? WHERE id = ?").run(ts, loopRunId);
+      return { loopRunId, status: "gate_failed", iterations: [], gateChecks: [] };
+    },
+    adapters: {
+      orchestrator: createOrchestratorModelFixture({
+        instructions: ["Keep every scrapes row in SOURCES.md."],
+      }),
+    },
+  });
+  const runs = db
+    .prepare("SELECT attempt, adjusted_instructions FROM loop_runs WHERE loop_name = 'company-research' ORDER BY attempt")
+    .all();
+  assert.ok(runs.length >= 2);
+  assert.match(runs[1].adjusted_instructions, /^Attempt 1\/2/);
+  assert.match(runs[1].adjusted_instructions, /did not resolve: sources_complete/);
+  assert.match(runs[1].adjusted_instructions, /5\. fail/);
+  db.close();
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
