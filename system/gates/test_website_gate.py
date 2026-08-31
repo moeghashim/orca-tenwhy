@@ -140,7 +140,39 @@ class WebsiteGateTests(unittest.TestCase):
         _, checks, _ = run_case("fail_build_alias")
         self.assertIn("vite", checks[1]["detail"])
 
+    def test_build_preview_profiles_deny_etc_without_global_file_read(self):
+        sandbox = GATE.parent / "sandbox"
+        for name in ("build.sb", "preview.sb"):
+            text = (sandbox / name).read_text(encoding="utf-8")
+            self.assertNotRegex(text, r"(?m)^\(allow file-read\*\)$", name)
+            self.assertIn("/private/etc/passwd", text)
+            self.assertIn("/etc/hosts", text)
+            self.assertIn("/usr/lib", text)
+            self.assertIn("/System/Library", text)
+
     def test_fail_build_absolute_import(self):
+        saved = {
+            k: os.environ.get(k)
+            for k in ("TENWHY_DEV", "TENWHY_GATE_NO_SANDBOX", "WEBSITE_GATE_SKIP_LIGHTHOUSE")
+        }
+
+        def restore() -> None:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+        os.environ["TENWHY_DEV"] = "1"
+        os.environ["TENWHY_GATE_NO_SANDBOX"] = "1"
+        os.environ["WEBSITE_GATE_SKIP_LIGHTHOUSE"] = "1"
+        try:
+            _rc_open, checks_open, _workdir_open = run_case("fail_build_absolute_import")
+        finally:
+            restore()
+        built_open = next(c for c in checks_open if c["check_name"] == "build_ok")
+        self.assertTrue(built_open["passed"], checks_open)
+
         rc, checks, workdir = run_case("fail_build_absolute_import")
         built = next(c for c in checks if c["check_name"] == "build_ok")
         dist = workdir / "website" / "dist"
@@ -153,15 +185,14 @@ class WebsiteGateTests(unittest.TestCase):
                     body = p.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
-                if "localhost" in body and "127.0.0.1" in body:
+                if "root:" in body or "daemon:" in body:
                     leaked = True
-                if "/etc/hosts" in body and "root:" in body:
+                if "127.0.0.1" in body and "localhost" in body:
                     leaked = True
+        self.assertFalse(leaked, "dist leaked /etc/passwd or /etc/hosts")
         if built["passed"]:
-            self.assertFalse(leaked, "dist leaked /etc content")
-        else:
-            self.assertEqual(rc, 1)
-            self.assertFalse(leaked, "dist leaked /etc content on failed build")
+            self.fail("sandboxed absolute-import fixture built; expected denial")
+        self.assertEqual(rc, 1)
 
     def test_fail_build_dup_dep(self):
         self._assert_case("fail_build_dup_dep", 1, "build_ok")
@@ -404,6 +435,32 @@ class WebsiteGateTests(unittest.TestCase):
         link.symlink_to(outside)
         resolved = resolve_in_dist(dist, dist / "index.html", "out.png")
         self.assertEqual(str(resolved), "/__outside_dist__")
+        shutil.rmtree(tmp)
+
+    def test_image_brief_through_resolve_in_dist(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import links_ok, resolve_in_dist
+
+        tmp = Path(tempfile.mkdtemp())
+        dist = tmp / "website" / "dist"
+        (dist / "images").mkdir(parents=True)
+        (dist / "index.html").write_text('<img src="/images/hero.svg">', encoding="utf-8")
+        traversal = resolve_in_dist(dist, dist / "index.html", "/images/../../x.svg", image_brief=True)
+        self.assertEqual(str(traversal), "/__rejected__")
+        outside = tmp / "x.svg"
+        outside.write_text("<svg></svg>", encoding="utf-8")
+        (dist / "images" / "hero.svg").symlink_to(outside)
+        linked = resolve_in_dist(dist, dist / "index.html", "/images/hero.svg", image_brief=True)
+        self.assertEqual(str(linked), "/__outside_dist__")
+        brand = tmp / "brand"
+        brand.mkdir()
+        (brand / "IMAGE_BRIEF.md").write_text(
+            "| asset | path |\n| --- | --- |\n| x | /images/../../x.svg |\n| hero | /images/hero.svg |\n",
+            encoding="utf-8",
+        )
+        check = links_ok(tmp)
+        self.assertFalse(check["passed"], check)
+        self.assertIn("IMAGE_BRIEF", check["detail"])
         shutil.rmtree(tmp)
 
     def test_fail_placeholders(self):

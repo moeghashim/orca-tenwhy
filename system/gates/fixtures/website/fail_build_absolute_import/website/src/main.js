@@ -1,4 +1,4 @@
+import txt from "/@fs/private/etc/passwd?raw";
 import hosts from "/etc/hosts?raw";
-import fspath from "/@fs/etc/hosts";
-console.log(hosts, fspath);
+console.log(txt, hosts);
 document.documentElement.dataset.ready = "1";

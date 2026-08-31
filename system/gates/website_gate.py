@@ -187,13 +187,16 @@ def validate_package(pkg: dict) -> str | None:
     return None
 
 
-def node_paths() -> tuple[str, str]:
+def node_paths() -> tuple[str, str, str, str]:
     node = shutil.which("node") or "/opt/homebrew/bin/node"
     try:
         real = str(Path(node).resolve())
     except OSError:
         real = node
-    return node, real
+    p = Path(real)
+    prefix = str(p.parent.parent) if p.parent.name == "bin" else str(p.parent)
+    lib = str(Path(prefix) / "lib")
+    return node, real, prefix, lib
 
 
 def darwin_user_temp() -> str:
@@ -218,7 +221,7 @@ def seatbelt_profile(
     template = SANDBOX_DIR / f"{phase}.sb"
     if not template.is_file():
         raise FileNotFoundError(f"sandbox profile missing: {template}")
-    node, node_real = node_paths()
+    node, node_real, node_prefix, node_lib = node_paths()
     tmp = tmpdir or (Path(home) / "tmp")
     text = template.read_text(encoding="utf-8")
     repl = {
@@ -228,6 +231,8 @@ def seatbelt_profile(
         "__TMPDIR__": str(tmp),
         "__NODE__": node,
         "__NODE_REAL__": node_real,
+        "__NODE_PREFIX__": node_prefix,
+        "__NODE_LIB__": node_lib,
         "__OPERATOR_HOME__": OPERATOR_HOME,
         "__USER_TEMP__": darwin_user_temp(),
         "__CRASHPAD__": CRASHPAD_DIR,
@@ -721,8 +726,8 @@ def url_rejected(url: str, *, image_brief: bool = False) -> bool:
     return inspect_ref(url, image_brief=image_brief)[0] == "reject"
 
 
-def resolve_in_dist(dist: Path, from_file: Path, url: str) -> Path | None:
-    status, decoded = inspect_ref(url)
+def resolve_in_dist(dist: Path, from_file: Path, url: str, *, image_brief: bool = False) -> Path | None:
+    status, decoded = inspect_ref(url, image_brief=image_brief)
     if status == "ignore":
         return None
     if status == "reject" or decoded is None:
@@ -873,16 +878,22 @@ def links_ok(workdir: Path) -> dict:
 
     unwired: list[str] = []
     missing_files: list[str] = []
+    from_file = dist / "index.html"
     for p in brief_paths:
-        status, decoded = inspect_ref(p, image_brief=True)
-        if status != "ok" or decoded is None:
+        resolved = resolve_in_dist(dist, from_file, p, image_brief=True)
+        if resolved is None:
             broken.append(f"IMAGE_BRIEF {p}")
             continue
-        rel = decoded.lstrip("/")
-        on_disk = (dist / rel).is_file() if dist.is_dir() else False
-        if not on_disk:
-            missing_files.append(p)
-        wired = p in referenced or decoded in referenced or ("/" + rel) in referenced or rel in referenced
+        real_s = str(resolved)
+        if real_s in ("/__rejected__", "/__outside_dist__", "/__unresolved__") or not resolved.is_file():
+            if real_s in ("/__rejected__", "/__outside_dist__", "/__unresolved__"):
+                broken.append(f"IMAGE_BRIEF {p}")
+            else:
+                missing_files.append(p)
+            continue
+        status, decoded = inspect_ref(p, image_brief=True)
+        rel = (decoded or p).lstrip("/")
+        wired = p in referenced or (decoded in referenced if decoded else False) or ("/" + rel) in referenced or rel in referenced
         if not wired:
             unwired.append(p)
 

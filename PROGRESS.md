@@ -84,6 +84,8 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 P5-fix2 sandbox: orchestrator acceptance is sandboxed `make verify` (Chrome must launch under `lighthouse.sb`). `make verify-gates-nosandbox` is Codex-only (`TENWHY_GATE_NO_SANDBOX=1` is ignored unless `TENWHY_DEV=1`).
 
+P5-fix3 (Codex `P5 issues #r3`): `WEBSITE_GATE_SKIP_LIGHTHOUSE=1 TENWHY_DEV=1 system/tools/.venv/bin/python -m unittest system.gates.test_website_gate` → `Ran 34 tests in 27.019s` `OK (skipped=2)` `exit=0`. `test_build_preview_profiles_deny_etc_without_global_file_read`; `test_fail_build_absolute_import` (Vite builds the `/@fs/private/etc/passwd?raw` + `/etc/hosts?raw` fixture with `TENWHY_GATE_NO_SANDBOX=1`, fails under the sandbox, dist leaks no passwd/hosts); `test_image_brief_through_resolve_in_dist`; `test_pass` still builds. `_pending_`
+
 P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-30):
 
 - `5` → `5.4.21` `sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==`
