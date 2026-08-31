@@ -89,6 +89,57 @@ test("flashed row ids clear after 800ms and CSS eases the background out", (t) =
   assert.match(css, /transition:\s*background-color\s+800ms\s+ease-out/);
 });
 
+test("failures keep card order across patches and re-sort after reconnect snapshot", () => {
+  const run = (id, eng, status) => ({
+    id,
+    engagement_id: eng,
+    loop_name: "website",
+    attempt: 0,
+    status,
+    iteration_count: 1,
+    last_note: "",
+    last_event_at: "2026-08-30T21:00:00Z",
+    adjusted_instructions: null,
+    change_request_id: null,
+  });
+  const eng = (id, name) => ({
+    id,
+    customer_name: name,
+    status: "needs_human",
+    active_loop: "website",
+    last_event_at: "2026-08-30T21:00:00Z",
+    last_note: "",
+    kb_files: [],
+    live_url: null,
+    repo_url: null,
+  });
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [eng("eng_a", "Alpha"), eng("eng_b", "Beta"), eng("eng_c", "Gamma")],
+    loop_runs: [run("run_a", "eng_a", "gate_failed"), run("run_b", "eng_b", "gate_failed"), run("run_c", "eng_c", "needs_human")],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const { root, store } = mount({ hash: "#/failures", snap });
+  const ids = () => [...root.querySelectorAll("[data-row]")].map((n) => n.getAttribute("data-row"));
+  assert.deepEqual(ids(), ["run_a", "run_b", "run_c"]);
+  store.applyPatch({
+    entities: { loop_runs: [{ ...snap.loop_runs[0], status: "needs_human" }] },
+  });
+  assert.deepEqual(ids(), ["run_a", "run_b", "run_c"]);
+  const next = {
+    ...store.snapshot,
+    loop_runs: store.snapshot.loop_runs.map((r) => ({ ...r })),
+  };
+  store.setSnapshot(next, { resort: true });
+  assert.deepEqual(ids(), ["run_a", "run_c", "run_b"]);
+});
+
 test("loading/empty/disconnected states render the exact copy", () => {
   const loading = mount({ snap: null });
   assert.equal(loading.root.querySelector("[data-state='loading']").tagName, "DIV");

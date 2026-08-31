@@ -491,11 +491,21 @@ export function renderComparison(cmp) {
   return wrap;
 }
 
+function orderedFailures(store) {
+  const snap = store.snapshot;
+  if (!snap) return [];
+  const fails = (snap.loop_runs || []).filter((r) => r.status === "needs_human" || r.status === "gate_failed");
+  const byId = new Map(fails.map((r) => [r.id, r]));
+  const out = [];
+  for (const id of store.failureOrder) if (byId.has(id)) out.push(byId.get(id));
+  for (const r of fails) if (!out.includes(r)) out.push(r);
+  return out;
+}
+
 function renderFailures(store, now, go) {
   const snap = store.snapshot;
   if (!snap) return loadingBlock();
-  const fails = (snap.loop_runs || []).filter((r) => r.status === "needs_human" || r.status === "gate_failed");
-  fails.sort((a, b) => (a.status === "needs_human" ? 0 : 1) - (b.status === "needs_human" ? 0 : 1));
+  const fails = orderedFailures(store);
   if (!fails.length) {
     return [emptyBlock("✓", "nothing blocked", "No gate_failed or needs_human runs. Loops are handling it.")];
   }
@@ -508,6 +518,7 @@ function renderFailures(store, now, go) {
     const accent = run.status === "needs_human" ? tokens.color.status.needs_human.fg : tokens.color.status.failed.fg;
     const card = el("div", {
       class: "fail-card",
+      "data-row": run.id,
       style: { borderLeftColor: accent },
       onClick: () => go(`#/runs/${eng.id}/${run.id}`),
     });

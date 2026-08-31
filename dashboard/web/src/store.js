@@ -1,8 +1,35 @@
 const FLASH_MS = 800;
 
+function isFailing(run) {
+  return run?.status === "needs_human" || run?.status === "gate_failed";
+}
+
+function failingIds(s) {
+  return (s?.loop_runs || []).filter(isFailing).map((r) => r.id);
+}
+
+function mergeOrder(prev, nextIds) {
+  const keep = new Set(nextIds);
+  const out = prev.filter((id) => keep.has(id));
+  for (const id of nextIds) if (!out.includes(id)) out.push(id);
+  return out;
+}
+
+function sortFailureIds(s) {
+  const byId = new Map((s?.loop_runs || []).map((r) => [r.id, r]));
+  const ids = failingIds(s);
+  ids.sort((a, b) => {
+    const sa = byId.get(a)?.status === "needs_human" ? 0 : 1;
+    const sb = byId.get(b)?.status === "needs_human" ? 0 : 1;
+    return sa - sb;
+  });
+  return ids;
+}
+
 export function createStore(initial = null) {
   let snapshot = initial;
   let engagementOrder = initial?.engagements?.map((e) => e.id) ?? [];
+  let failureOrder = failingIds(initial);
   let flashed = new Set();
   const flashTimers = new Map();
   let sse = { state: "live", retry: 0, retryIn: 0, closedAt: null };
@@ -47,6 +74,9 @@ export function createStore(initial = null) {
     get engagementOrder() {
       return engagementOrder;
     },
+    get failureOrder() {
+      return failureOrder;
+    },
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -55,6 +85,9 @@ export function createStore(initial = null) {
       snapshot = s;
       if (resort || engagementOrder.length === 0) {
         engagementOrder = (s?.engagements ?? []).map((e) => e.id);
+        failureOrder = sortFailureIds(s);
+      } else {
+        failureOrder = mergeOrder(failureOrder, failingIds(s));
       }
       emit();
     },
@@ -81,6 +114,8 @@ export function createStore(initial = null) {
         }
         snapshot.comparisons = next;
       }
+      engagementOrder = mergeOrder(engagementOrder, (snapshot.engagements || []).map((e) => e.id));
+      failureOrder = mergeOrder(failureOrder, failingIds(snapshot));
       emit();
     },
     clearFlashed() {
