@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseReviewerVerdict } from "../../orchestrator/loop_runner.mjs";
-import { executorPrompt, reviewerPrompt } from "./index.mjs";
+import { executorPrompt, reviewerPrompt, validateVerdict } from "./index.mjs";
 
 const SOP_CHECKS = [
   "RESEARCH.json validates against schema.",
@@ -64,4 +64,31 @@ test("fixture reviewer reply parses to a valid verdict and notes reference 1.–
   assert.match(parsed.notes, /3\./);
   assert.match(parsed.notes, /4\./);
   assert.match(parsed.notes, /5\./);
+});
+
+test("validateVerdict coerces Luna's real dry-run notes that omit 1.–5.", () => {
+  const rev = reviewerPrompt(VARS);
+  assert.match(rev, /five lines/);
+  assert.match(rev, /All five exit-gate checks pass/);
+  const parsed = parseReviewerVerdict(
+    `The research is complete.\n\n\`\`\`json\n{"verdict": "approve", "notes": "All five exit-gate checks pass."}\n\`\`\`\n`,
+  );
+  assert.equal(parsed.verdict, "approve");
+  assert.equal(parsed.notes, "All five exit-gate checks pass.");
+  const checked = validateVerdict(parsed);
+  assert.equal(checked.verdict, "revise");
+  assert.equal(checked.notes, "FORMAT: reviewer notes must enumerate checks 1–5");
+});
+
+test("validateVerdict accepts five check-numbered lines and leaves approve", () => {
+  const notes = [
+    "1. pass — RESEARCH.json matches the schema.",
+    "2. pass — five competitors each have a 200 scrape URL.",
+    "3. pass — product coverage is 50% with priced 200 sources.",
+    "4. pass — three enhancement_ideas have rationale.",
+    "5. pass — SOURCES.md lists every scrapes row.",
+  ].join("\n");
+  const checked = validateVerdict({ verdict: "approve", notes });
+  assert.equal(checked.verdict, "approve");
+  assert.equal(checked.notes, notes);
 });

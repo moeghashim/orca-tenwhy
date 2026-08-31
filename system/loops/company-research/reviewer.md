@@ -23,10 +23,16 @@ Site URL: {{site_url}}
 
 ## Required output
 
-- Assess each check by number (`1.`–`5.`), quoting the offending item when failing.
+- The `notes` string **inside the JSON** must contain **five lines**, each starting with `1.` `2.` `3.` `4.` `5.` (one check per line). Each line states pass or fail and a one-sentence reason. On fail, quote the offending item (URL, product name, missing file). A summary such as "All five exit-gate checks pass." is not sufficient.
+- Example `notes` value (literal newlines):
+  `1. pass — RESEARCH.json matches the schema.`
+  `2. pass — five competitors each have a 200 scrape URL.`
+  `3. pass — product coverage is ≥ 25% with priced 200 sources.`
+  `4. pass — three enhancement_ideas have non-empty rationale.`
+  `5. pass — SOURCES.md lists every scrapes row for this run.`
 - End with exactly one fenced JSON block and no prose after it:
-  `{"verdict": "revise" | "approve" | "reject" | "escalate", "notes": "<check-numbered critique>"}`
-- `approve` only if you believe all five will pass.
+  `{"verdict": "revise" | "approve" | "reject" | "escalate", "notes": "<five check-numbered lines>"}`
+- `approve` only if you believe all five will pass (and the five lines say so).
 - `reject` for fabricated URLs (a URL not in the scrapes table).
 - `escalate` only for policy problems (e.g. scraping refused everywhere, market cannot be identified).
 - `revise` otherwise.

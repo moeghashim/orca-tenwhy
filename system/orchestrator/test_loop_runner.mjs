@@ -45,6 +45,10 @@ function setup() {
   return { dir, dbPath, db, workdir, engagementId };
 }
 
+function checkNotes(summary = "fixture") {
+  return [1, 2, 3, 4, 5].map((n) => `${n}. pass — ${summary}.`).join("\n");
+}
+
 function withResearchJson(label) {
   const payload = {
     RESEARCH: {
@@ -95,8 +99,8 @@ test("A: revise then approve, gate all-pass → gate_passed", async (t) => {
     createFixtureAdapter({
       executor: [withResearchJson("draft-1"), withResearchJson("draft-2")],
       reviewer: [
-        JSON.stringify({ verdict: "revise", notes: "needs work" }),
-        JSON.stringify({ verdict: "approve", notes: "ok" }),
+        JSON.stringify({ verdict: "revise", notes: checkNotes("needs work") }),
+        JSON.stringify({ verdict: "approve", notes: checkNotes("ok") }),
       ],
     }),
     async () => [{ check_name: "ok", passed: 1, detail: "all good" }],
@@ -147,7 +151,7 @@ test("B: reviewer prose with no JSON is coerced to revise FORMAT:", async (t) =>
 });
 
 test("C: four revise → gate_failed, no gate_checks", async (t) => {
-  const revise = JSON.stringify({ verdict: "revise", notes: "again" });
+  const revise = JSON.stringify({ verdict: "revise", notes: checkNotes("again") });
   const { db, result } = await run(
     t,
     createFixtureAdapter({
@@ -175,7 +179,7 @@ test("D: escalate on iteration 1 → needs_human", async (t) => {
     t,
     createFixtureAdapter({
       executor: [withResearchJson("draft")],
-      reviewer: [JSON.stringify({ verdict: "escalate", notes: "need Moe" })],
+      reviewer: [JSON.stringify({ verdict: "escalate", notes: checkNotes("need Moe") })],
     }),
     async () => [{ check_name: "ok", passed: 1, detail: "ok" }],
   );
@@ -191,7 +195,7 @@ test("E: approve but gate fails one check → gate_failed", async (t) => {
     t,
     createFixtureAdapter({
       executor: [withResearchJson("draft")],
-      reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
+      reviewer: [JSON.stringify({ verdict: "approve", notes: checkNotes("ok") })],
     }),
     async () => [
       { check_name: "schema", passed: 1, detail: "ok" },
@@ -235,7 +239,7 @@ test("G: reviewer prompt inlines the executor output verbatim (no-tools reviewer
   const seen = [];
   const inner = createFixtureAdapter({
     executor: [withResearchJson("THE-EXECUTOR-WROTE-THIS-9f2c")],
-    reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
+    reviewer: [JSON.stringify({ verdict: "approve", notes: checkNotes("ok") })],
   });
   const capturing = {
     async run(args) {
@@ -254,7 +258,7 @@ test("I: executor prompt includes idea/site_url and handoff JSON from inputs", a
   const seen = [];
   const inner = createFixtureAdapter({
     executor: [withResearchJson("draft")],
-    reviewer: [JSON.stringify({ verdict: "approve", notes: "ok" })],
+    reviewer: [JSON.stringify({ verdict: "approve", notes: checkNotes("ok") })],
   });
   const capturing = {
     async run(args) {

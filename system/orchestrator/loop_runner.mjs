@@ -528,7 +528,10 @@ export async function runLoop({
     } catch (err) {
       return failRunOnError(db, { engagementId, loopRunId, n, role: "reviewer", err, iterations, traceRef: lastExecutorTrace });
     }
-    const parsed = parseReviewerVerdict(revResult.text);
+    let parsed = parseReviewerVerdict(revResult.text);
+    if (typeof loopMod?.validateVerdict === "function") {
+      parsed = loopMod.validateVerdict(parsed) || parsed;
+    }
     const iterationId = prefixedId("it");
     db.prepare(
       `INSERT INTO iterations (
