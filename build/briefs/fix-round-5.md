@@ -9,4 +9,7 @@
 
 5. **Cross-check must be strict** (`system/orchestrator/customer_repo.mjs:30`, Codex `P3 issues #r5`): when `gh repo view … --json url -q .url` succeeds, its output must be a non-empty URL equal to the constructed one; empty or different output → throw (never accept silently). Regression test with a stub `gh` that prints nothing on `repo view`. Commit `P3-fix5: …`.
 
+6. **Ledger in insertion order** (`system/orchestrator/loop_runner.mjs:182`, Codex `P4 issues #r7`): order the scrapes ledger by `rowid` (insertion), not `created_at` (second-granularity ties reorder rows). Test: two rows with identical `created_at` keep insertion order.
+7. **Case-insensitive pass/fail tokens** (`system/orchestrator/failure.mjs:29`): recognise `FAIL`/`Fail`/`fails` etc. when extracting the failing check from reviewer notes (and the same tokens in `validateVerdict`). Test with uppercase notes. Commit `P4-fix5: …`.
+
 Finish with `DONE fix5 <hash…>` — only hashes in `git log`.
