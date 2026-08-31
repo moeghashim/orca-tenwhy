@@ -142,6 +142,17 @@ function mount(hash, snap = fixtureSnapshot(), sse) {
   return { root, store, document: dom.window.document };
 }
 
+test("connection card is two lines: live + SSE /api/events", () => {
+  const { root } = mount("#/runs");
+  assert.equal(root.querySelector("[data-conn-label]").textContent, "live");
+  assert.equal(root.querySelector("[data-conn-sub]").textContent, "SSE /api/events");
+  const recon = mount("#/runs", fixtureSnapshot(), { state: "reconnecting", retry: 2, retryIn: 2, closedAt: null });
+  assert.match(recon.root.querySelector("[data-conn-label]").textContent, /reconnecting · retry 2\/5 in 2s/);
+  const disc = mount("#/runs", fixtureSnapshot(), { state: "disconnected", closedAt: "2026-08-30T21:58:00Z", retry: 5, retryIn: 0 });
+  assert.equal(disc.root.querySelector("[data-conn-label]").textContent, "disconnected");
+  assert.ok(disc.root.querySelector("[data-conn-sub]").textContent);
+});
+
 test("sidebar wordmark is one nowrap line tenwhy / loop graph with operations console subtitle", () => {
   const { root } = mount("#/runs");
   const mark = root.querySelector(".wordmark");

@@ -110,11 +110,13 @@ function needsCount(snap) {
 }
 
 export function connLabel(sse) {
-  if (sse.state === "live") return { label: "live · SSE /api/events", sub: "/api/events", fg: "#059669", dot: "#059669", anim: "lgPulse 1.6s ease-in-out infinite" };
+  if (sse.state === "live") {
+    return { label: "live", sub: "SSE /api/events", fg: tokens.color.status.passed.fg, dot: tokens.color.status.passed.fg, anim: "lgPulse 1.6s ease-in-out infinite" };
+  }
   if (sse.state === "reconnecting") {
     return {
       label: `reconnecting · retry ${sse.retry}/5 in ${sse.retryIn}s`,
-      sub: "retrying",
+      sub: "SSE /api/events",
       fg: tokens.color.status.needs_human.fg,
       dot: tokens.color.status.needs_human.fg,
       anim: "lgPulse 1.6s ease-in-out infinite",
@@ -122,7 +124,7 @@ export function connLabel(sse) {
   }
   return {
     label: "disconnected",
-    sub: sse.closedAt ? rel(sse.closedAt) : "stream closed",
+    sub: sse.closedAt ? rel(sse.closedAt) : "—",
     fg: tokens.color.status.failed.fg,
     dot: tokens.color.status.failed.fg,
     anim: "none",
@@ -486,7 +488,12 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
       "div",
       { class: "conn", "data-conn": sse.state },
       el("span", { class: "conn-dot", style: { background: conn.dot, animation: conn.anim } }),
-      el("div", {}, el("div", { class: "mono", style: { color: conn.fg } }, conn.label), el("div", { class: "faint" }, conn.sub)),
+      el(
+        "div",
+        { class: "conn-text" },
+        el("div", { class: "mono", "data-conn-label": "1", style: { color: conn.fg } }, conn.label),
+        el("div", { class: "faint", "data-conn-sub": "1" }, conn.sub),
+      ),
     ),
     el(
       "nav",
