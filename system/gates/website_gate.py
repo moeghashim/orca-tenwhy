@@ -404,7 +404,10 @@ class _HtmlRefs(HTMLParser):
         self.srcs: list[str] = []
         self.srcsets: list[str] = []
         self.img_srcs: list[str] = []
-        self._in_img = False
+        self.styles: list[str] = []
+        self.style_blocks: list[str] = []
+        self._in_style = False
+        self._style_buf: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         ad = {k.lower(): (v or "") for k, v in attrs}
@@ -416,8 +419,23 @@ class _HtmlRefs(HTMLParser):
                 self.img_srcs.append(ad["src"])
         if "srcset" in ad:
             self.srcsets.append(ad["srcset"])
+        if "style" in ad:
+            self.styles.append(ad["style"])
         if tag in {"link", "script", "iframe", "source", "img"} and "href" in ad and tag != "a":
             self.hrefs.append(ad["href"])
+        if tag == "style":
+            self._in_style = True
+            self._style_buf = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "style" and self._in_style:
+            self.style_blocks.append("".join(self._style_buf))
+            self._in_style = False
+            self._style_buf = []
+
+    def handle_data(self, data: str) -> None:
+        if self._in_style:
+            self._style_buf.append(data)
 
 
 def html_refs(html: str) -> _HtmlRefs:
@@ -433,6 +451,10 @@ def html_refs(html: str) -> _HtmlRefs:
 def css_urls(text: str) -> list[str]:
     found = []
     for m in re.finditer(r"url\(\s*(['\"]?)([^)'\"]+)\1\s*\)", text, flags=re.I):
+        found.append(m.group(2).strip())
+    for m in re.finditer(r"@import\s+url\(\s*(['\"]?)([^)'\"]+)\1\s*\)", text, flags=re.I):
+        found.append(m.group(2).strip())
+    for m in re.finditer(r"@import\s+(['\"])([^'\"]+)\1", text, flags=re.I):
         found.append(m.group(2).strip())
     return found
 
@@ -548,14 +570,31 @@ def links_ok(workdir: Path) -> dict:
                 resolved = resolve_in_dist(dist, html_file, url)
                 if resolved is not None and not resolved.is_file():
                     broken.append(f"{html_file.relative_to(dist_real)} srcset -> {url}")
-        for url in css_urls(html):
-            note_ref(url)
+        css_from = refs.styles + refs.style_blocks + css_urls(html)
+        for url in css_from:
+            for u in css_urls(url) if "url(" in url or "@import" in url.lower() else [url]:
+                if is_ignored(strip_url(u)):
+                    continue
+                note_ref(u)
+                resolved = resolve_in_dist(dist, html_file, u)
+                if resolved is not None and not resolved.is_file():
+                    broken.append(f"{html_file.relative_to(dist_real)} css -> {u}")
 
     if dist.is_dir():
         for css in dist.rglob("*.css"):
             if css.is_file():
+                css_real = css.resolve()
                 for url in css_urls(css.read_text(encoding="utf-8", errors="replace")):
+                    if is_ignored(strip_url(url)):
+                        continue
                     note_ref(url)
+                    resolved = resolve_in_dist(dist, css_real, url)
+                    if resolved is not None and not resolved.is_file():
+                        try:
+                            rel = str(css_real.relative_to(dist_real))
+                        except ValueError:
+                            rel = css.name
+                        broken.append(f"{rel} css -> {url}")
 
     unwired: list[str] = []
     missing_files: list[str] = []

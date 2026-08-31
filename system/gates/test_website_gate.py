@@ -195,6 +195,18 @@ class WebsiteGateTests(unittest.TestCase):
         checks = self._assert_case("fail_links", 1, "links_ok")
         self.assertIn("broken links", checks[2]["detail"])
 
+    def test_fail_links_css(self):
+        checks = self._assert_case("fail_links_css", 1, "links_ok")
+        self.assertIn("css", checks[2]["detail"])
+
+    def test_fail_links_inline(self):
+        checks = self._assert_case("fail_links_inline", 1, "links_ok")
+        self.assertIn("missing-inline.png", checks[2]["detail"])
+
+    def test_fail_links_srcset(self):
+        checks = self._assert_case("fail_links_srcset", 1, "links_ok")
+        self.assertIn("srcset", checks[2]["detail"])
+
     def test_fail_placeholders(self):
         checks = self._assert_case("fail_placeholders", 1, "links_ok")
         self.assertIn("unwired placeholders", checks[2]["detail"])

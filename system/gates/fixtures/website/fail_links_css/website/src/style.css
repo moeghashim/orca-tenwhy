@@ -1,0 +1,16 @@
+:root {
+  --bg: #f6f1ea;
+  --surface: #fffaf4;
+  --text: #2a241c;
+  --accent: #1a6b63;
+  --font: Georgia, serif;
+  --radius: 12px;
+}
+html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
+header, main, footer { max-width: 720px; margin: 0 auto; padding: 16px; }
+a { color: var(--accent); }
+img { max-width: 100%; height: auto; border-radius: var(--radius); }
+nav a { margin-right: 12px; }
+
+.hero{background:url(/missing-bg.png) no-repeat;}
+@import url(/missing-import.css);
