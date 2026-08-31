@@ -130,6 +130,11 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
         schema_ok = check("schema_valid", True, "ok")
         ok_urls = urls_200(conn, loop_run_id)
         competitors = data.get("competitors") or []
+        competitor_unverified = []
+        for c in competitors:
+            for url in [c.get("url"), *[p.get("url") for p in (c.get("products") or [])]]:
+                if url and url not in ok_urls:
+                    competitor_unverified.append(url)
         failing = []
         seen_urls: dict[str, str] = {}
         seen_names: dict[str, str] = {}
@@ -151,9 +156,11 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
             elif nname:
                 seen_names[nname] = label
         distinct_ok = len(seen_urls) >= 5 and len(seen_names) >= 5
-        comp_ok = distinct_ok and not failing
+        comp_ok = distinct_ok and not failing and not competitor_unverified
         if failing:
             comp_detail = "no 200 scrape: " + ", ".join(failing)
+        elif competitor_unverified:
+            comp_detail = "unverified competitor URL: " + ", ".join(competitor_unverified)
         elif not distinct_ok:
             comp_detail = (
                 f"{len(seen_urls)} distinct urls / {len(seen_names)} distinct names (need ≥ 5 each)"
@@ -162,6 +169,11 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
         else:
             comp_detail = f"{len(seen_urls)} distinct competitors with 200 scrapes"
         products = (data.get("company") or {}).get("customer_products") or []
+        product_unverified = [
+            u
+            for u in [p.get("url") for p in products] + [m.get("source_url") for m in (data.get("product_matches") or [])]
+            if u and u not in ok_urls
+        ]
         known_ids = {p.get("id") for p in products if p.get("id")}
         matches = data.get("product_matches") or []
         total = len(products)
@@ -180,10 +192,12 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
             if pid:
                 distinct.add(pid)
         ratio = (len(distinct) / total) if total else 0.0
-        cov_ok = total > 0 and ratio >= 0.25 and not offending
+        cov_ok = total > 0 and ratio >= 0.25 and not offending and not product_unverified
         cov_detail = f"{len(distinct)}/{total}"
         if offending:
             cov_detail += "; offending: " + ", ".join(offending)
+        if product_unverified:
+            cov_detail += "; unverified product URL: " + ", ".join(product_unverified)
         ideas = data.get("enhancement_ideas") or []
         good_ideas = [
             i

@@ -99,6 +99,9 @@ class ResearchGateTests(unittest.TestCase):
     def test_fail_competitors_dup(self):
         self._assert_case("fail_competitors_dup", 1, "competitors≥5")
 
+    def test_fail_fabricated_nested_url(self):
+        self._assert_case("fail_fabricated_nested_url", 1, "competitors≥5")
+
     def test_fail_coverage_unknown_id(self):
         self._assert_case("fail_coverage_unknown_id", 1, "product_coverage≥25%")
         _, checks = run_case("fail_coverage_unknown_id")

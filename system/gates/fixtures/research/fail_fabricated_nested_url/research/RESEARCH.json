@@ -8,7 +8,7 @@
     ]
   },
   "competitors": [
-    { "name": "C1", "url": "https://c1.example/", "summary": "rival 1", "products": [{ "name": "Whitening kit", "price": 99, "url": "https://c1.example/" }] },
+    { "name": "C1", "url": "https://c1.example/", "summary": "rival 1", "products": [{ "name": "Whitening kit", "price": 99, "url": "https://evil.example/nested" }] },
     { "name": "C2", "url": "https://c2.example/", "summary": "rival 2", "products": [] },
     { "name": "C3", "url": "https://c3.example/", "summary": "rival 3", "products": [] },
     { "name": "C4", "url": "https://c4.example/", "summary": "rival 4", "products": [] },
