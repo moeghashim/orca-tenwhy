@@ -27,42 +27,79 @@ async function waitFor(predicate, timeoutMs = 5000) {
   throw new Error("timeout waiting for condition");
 }
 
+function sqliteHeader(lockPath) {
+  return fs.readFileSync(lockPath).subarray(0, 15).toString();
+}
+
+function spawnScript(src) {
+  return spawn(process.execPath, ["--input-type=module", "-e", src], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+async function plantDeadLock(lockPath) {
+  const src = `
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const got = acquireDaemonLock(${JSON.stringify(lockPath)});
+    if (!got.ok) process.exit(4);
+    process.exit(0);
+  `;
+  const child = spawnScript(src);
+  const { code } = await waitExit(child);
+  assert.equal(code, 0);
+  return child.pid;
+}
+
+function racerSrc(lockPath, goPath, holdMs = 1500) {
+  return `
+    import fs from "node:fs";
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const go = ${JSON.stringify(goPath)};
+    const lock = ${JSON.stringify(lockPath)};
+    const start = Date.now();
+    while (!fs.existsSync(go)) {
+      if (Date.now() - start > 5000) process.exit(99);
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    const got = acquireDaemonLock(lock);
+    if (!got.ok) process.exit(3);
+    await new Promise((r) => setTimeout(r, ${holdMs}));
+    process.exit(0);
+  `;
+}
+
 test("daemon lock refuses a live pid", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
-  fs.writeFileSync(lockPath, `${process.pid}\n`);
+  const first = acquireDaemonLock(lockPath);
+  assert.equal(first.ok, true);
   const got = acquireDaemonLock(lockPath, { pid: 4242 });
   assert.equal(got.ok, false);
   assert.equal(got.pid, process.pid);
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(process.pid));
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  releaseDaemonLock(lockPath);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("daemon lock replaces a dead pid", () => {
+test("daemon lock replaces a dead pid", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
-  const dead = 2147483646;
-  fs.writeFileSync(lockPath, `${dead}\n`);
-  const kill = (pid, sig) => {
-    if (pid === dead) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
-    return process.kill(pid, sig);
-  };
-  const got = acquireDaemonLock(lockPath, { pid: 4242, kill });
+  await plantDeadLock(lockPath);
+  const got = acquireDaemonLock(lockPath, { pid: 4242 });
   assert.equal(got.ok, true);
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), "4242");
-  const stale = fs.readdirSync(dir).filter((n) => n.startsWith("daemon.lock.stale."));
-  assert.equal(stale.length, 1);
-  assert.match(stale[0], /^daemon\.lock\.stale\.\d+\.4242$/);
-  assert.equal(fs.readFileSync(path.join(dir, stale[0]), "utf8").trim(), String(dead));
+  assert.equal(got.pid, 4242);
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
   releaseDaemonLock(lockPath, { pid: 4242 });
-  assert.equal(fs.existsSync(lockPath), false);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("runDaemon exits 3 when another daemon holds the lock", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
-  fs.writeFileSync(lockPath, `${process.pid}\n`);
+  const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"]);
+  const holderExit = waitExit(holder);
+  const planted = acquireDaemonLock(lockPath, { pid: holder.pid });
+  assert.equal(planted.ok, true);
   await assert.rejects(
     () =>
       runDaemon({
@@ -71,8 +108,11 @@ test("runDaemon exits 3 when another daemon holds the lock", async () => {
         lockPath,
         tickOpts: { runLoop: async () => ({}), config: { loops: {} } },
       }),
-    (err) => err.exitCode === 3 && err.message === `daemon already running (pid ${process.pid})`,
+    (err) => err.exitCode === 3 && err.message === `daemon already running (pid ${holder.pid})`,
   );
+  process.kill(holder.pid, "SIGKILL");
+  await holderExit;
+  releaseDaemonLock(lockPath, { pid: holder.pid });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -80,72 +120,34 @@ test("two acquirers racing: exactly one succeeds, the other exits 3", async () =
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
   const goPath = path.join(dir, "go");
-  const src = `
-    import fs from "node:fs";
-    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
-    const go = ${JSON.stringify(goPath)};
-    const lock = ${JSON.stringify(lockPath)};
-    const start = Date.now();
-    while (!fs.existsSync(go)) {
-      if (Date.now() - start > 5000) process.exit(99);
-      await new Promise((r) => setTimeout(r, 1));
-    }
-    const got = acquireDaemonLock(lock);
-    if (!got.ok) process.exit(3);
-    await new Promise((r) => setTimeout(r, 1500));
-    process.exit(0);
-  `;
-  const spawnRacer = () =>
-    spawn(process.execPath, ["--input-type=module", "-e", src], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  const a = spawnRacer();
-  const b = spawnRacer();
-  await new Promise((r) => setTimeout(r, 40));
-  fs.writeFileSync(goPath, "1");
-  const [ea, eb] = await Promise.all([waitExit(a), waitExit(b)]);
-  const codes = [ea.code, eb.code].sort((x, y) => x - y);
-  assert.deepEqual(codes, [0, 3], JSON.stringify({ ea, eb, out: a.stderr?.toString?.() }));
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test("two children racing a dead-pid stale lock: exactly one acquires", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
-  const lockPath = path.join(dir, "daemon.lock");
-  const goPath = path.join(dir, "go");
-  fs.writeFileSync(lockPath, "2147483646\n");
-  const src = `
-    import fs from "node:fs";
-    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
-    const go = ${JSON.stringify(goPath)};
-    const lock = ${JSON.stringify(lockPath)};
-    const start = Date.now();
-    while (!fs.existsSync(go)) {
-      if (Date.now() - start > 5000) process.exit(99);
-      await new Promise((r) => setTimeout(r, 1));
-    }
-    const got = acquireDaemonLock(lock);
-    if (!got.ok) process.exit(3);
-    await new Promise((r) => setTimeout(r, 1500));
-    process.exit(0);
-  `;
-  const spawnRacer = () =>
-    spawn(process.execPath, ["--input-type=module", "-e", src], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  const a = spawnRacer();
-  const b = spawnRacer();
+  const src = racerSrc(lockPath, goPath);
+  const a = spawnScript(src);
+  const b = spawnScript(src);
   await new Promise((r) => setTimeout(r, 40));
   fs.writeFileSync(goPath, "1");
   const [ea, eb] = await Promise.all([waitExit(a), waitExit(b)]);
   const codes = [ea.code, eb.code].sort((x, y) => x - y);
   assert.deepEqual(codes, [0, 3], JSON.stringify({ ea, eb }));
-  const stale = fs.readdirSync(dir).filter((n) => n.startsWith("daemon.lock.stale."));
-  assert.ok(stale.length >= 1);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("SIGINT to a holder removes its lock; foreign pid is left untouched", async () => {
+test("two children racing a dead-pid lock: exactly one acquires", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const goPath = path.join(dir, "go");
+  await plantDeadLock(lockPath);
+  const src = racerSrc(lockPath, goPath);
+  const a = spawnScript(src);
+  const b = spawnScript(src);
+  await new Promise((r) => setTimeout(r, 40));
+  fs.writeFileSync(goPath, "1");
+  const [ea, eb] = await Promise.all([waitExit(a), waitExit(b)]);
+  const codes = [ea.code, eb.code].sort((x, y) => x - y);
+  assert.deepEqual(codes, [0, 3], JSON.stringify({ ea, eb }));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("SIGINT to a holder removes its lock; foreign pid is left untouched", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
   const dbPath = path.join(dir, "t.db");
@@ -162,26 +164,37 @@ test("SIGINT to a holder removes its lock; foreign pid is left untouched", async
       },
     });
   `;
-  const child = spawn(process.execPath, ["--input-type=module", "-e", src], {
-    stdio: ["ignore", "pipe", "pipe"],
+  const child = spawnScript(src);
+  t.after(() => {
+    try {
+      process.kill(child.pid, "SIGKILL");
+    } catch {
+      /* */
+    }
   });
   const exited = waitExit(child);
   await waitFor(() => fs.existsSync(lockPath));
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(child.pid));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
   process.kill(child.pid, "SIGINT");
   const { code, signal } = await exited;
   assert.equal(signal, null);
   assert.equal(code, 0);
-  assert.equal(fs.existsSync(lockPath), false);
-
-  fs.writeFileSync(lockPath, `${process.pid}\n`);
+  const after = acquireDaemonLock(lockPath, { pid: 4242 });
+  assert.equal(after.ok, true);
   releaseDaemonLock(lockPath, { pid: 4242 });
-  assert.equal(fs.existsSync(lockPath), true);
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(process.pid));
+
+  const held = acquireDaemonLock(lockPath);
+  assert.equal(held.ok, true);
+  releaseDaemonLock(lockPath, { pid: 4242 });
+  const steal = acquireDaemonLock(lockPath, { pid: 4242 });
+  assert.equal(steal.ok, false);
+  assert.equal(steal.pid, process.pid);
+  releaseDaemonLock(lockPath);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("SIGINT mid-tick keeps the lock until the tick finishes", async () => {
+test("SIGINT mid-tick keeps the lock until the tick finishes", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
   const dbPath = path.join(dir, "t.db");
@@ -203,8 +216,13 @@ test("SIGINT mid-tick keeps the lock until the tick finishes", async () => {
       },
     });
   `;
-  const child = spawn(process.execPath, ["--input-type=module", "-e", src], {
-    stdio: ["ignore", "pipe", "pipe"],
+  const child = spawnScript(src);
+  t.after(() => {
+    try {
+      process.kill(child.pid, "SIGKILL");
+    } catch {
+      /* */
+    }
   });
   const exited = waitExit(child);
   await waitFor(() => fs.existsSync(tickingPath));
@@ -215,119 +233,88 @@ test("SIGINT mid-tick keeps the lock until the tick finishes", async () => {
     const got = acquireDaemonLock(${JSON.stringify(lockPath)});
     process.exit(got.ok ? 0 : 3);
   `;
-  const probe = spawn(process.execPath, ["--input-type=module", "-e", probeSrc], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const probe = spawnScript(probeSrc);
   const probed = await waitExit(probe);
   assert.equal(probed.code, 3, "second acquire must see the lock held during the in-flight tick");
   assert.equal(fs.existsSync(lockPath), true);
   const { code, signal } = await exited;
   assert.equal(signal, null);
   assert.equal(code, 0);
-  assert.equal(fs.existsSync(lockPath), false);
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test("held reaper lock blocks takeover; holder then acquires", async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
-  const lockPath = path.join(dir, "daemon.lock");
-  const reapPath = `${lockPath}.reap`;
-  const heldPath = path.join(dir, "held");
-  const releasePath = path.join(dir, "release");
-  const resultPath = path.join(dir, "b.json");
-  fs.writeFileSync(lockPath, "2147483646\n");
-  const srcA = `
-    import fs from "node:fs";
-    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
-    const reap = ${JSON.stringify(reapPath)};
-    const lock = ${JSON.stringify(lockPath)};
-    const fd = fs.openSync(reap, "wx");
-    try {
-      fs.writeSync(fd, \`\${process.pid}\\n\`);
-      fs.writeFileSync(${JSON.stringify(heldPath)}, String(process.pid));
-      const start = Date.now();
-      while (!fs.existsSync(${JSON.stringify(releasePath)})) {
-        if (Date.now() - start > 8000) process.exit(99);
-        await new Promise((r) => setTimeout(r, 15));
-      }
-    } finally {
-      try { fs.closeSync(fd); } catch {}
-      try { fs.unlinkSync(reap); } catch {}
-    }
-    const got = acquireDaemonLock(lock);
-    if (!got.ok) process.exit(3);
-    process.exit(0);
-  `;
-  const srcB = `
-    import fs from "node:fs";
-    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
-    const start = Date.now();
-    while (!fs.existsSync(${JSON.stringify(heldPath)})) {
-      if (Date.now() - start > 5000) process.exit(99);
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    const got = acquireDaemonLock(${JSON.stringify(lockPath)});
-    fs.writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify(got));
-    process.exit(got.ok ? 0 : 3);
-  `;
-  const a = spawn(process.execPath, ["--input-type=module", "-e", srcA], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const aExit = waitExit(a);
-  await waitFor(() => fs.existsSync(heldPath));
-  const b = spawn(process.execPath, ["--input-type=module", "-e", srcB], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const eb = await waitExit(b);
-  assert.equal(eb.code, 3);
-  const bGot = JSON.parse(fs.readFileSync(resultPath, "utf8"));
-  assert.equal(bGot.ok, false);
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), "2147483646");
-  fs.writeFileSync(releasePath, "1");
-  const ea = await aExit;
-  assert.equal(ea.code, 0);
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(a.pid));
-  assert.equal(fs.existsSync(reapPath), false);
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test("reaper lock older than 30s with a dead pid is removed and takeover proceeds", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
-  const lockPath = path.join(dir, "daemon.lock");
-  const reapPath = `${lockPath}.reap`;
-  const dead = 2147483646;
-  fs.writeFileSync(lockPath, `${dead}\n`);
-  fs.writeFileSync(reapPath, `${dead}\n`);
-  const aged = new Date(Date.now() - 31_000);
-  fs.utimesSync(reapPath, aged, aged);
-  const kill = (pid, sig) => {
-    if (pid === dead) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
-    return process.kill(pid, sig);
-  };
-  const got = acquireDaemonLock(lockPath, { pid: 4242, kill });
-  assert.equal(got.ok, true);
-  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), "4242");
-  assert.equal(fs.existsSync(reapPath), false);
+  const after = acquireDaemonLock(lockPath, { pid: 4242 });
+  assert.equal(after.ok, true);
   releaseDaemonLock(lockPath, { pid: 4242 });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("reaper lock with a live pid blocks takeover", () => {
+test("six children racing a dead-pid lock: exactly one acquires", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
   const lockPath = path.join(dir, "daemon.lock");
-  const reapPath = `${lockPath}.reap`;
-  const dead = 2147483646;
+  const goPath = path.join(dir, "go");
+  await plantDeadLock(lockPath);
+  const src = racerSrc(lockPath, goPath);
+  const kids = Array.from({ length: 6 }, () => spawnScript(src));
+  await new Promise((r) => setTimeout(r, 40));
+  fs.writeFileSync(goPath, "1");
+  const exits = await Promise.all(kids.map(waitExit));
+  const codes = exits.map((e) => e.code).sort((x, y) => x - y);
+  assert.deepEqual(codes, [0, 3, 3, 3, 3, 3], JSON.stringify(exits));
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("holder SIGKILLed mid-hold: next acquirer takes over", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const heldPath = path.join(dir, "held");
+  const src = `
+    import fs from "node:fs";
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const got = acquireDaemonLock(${JSON.stringify(lockPath)});
+    if (!got.ok) process.exit(4);
+    fs.writeFileSync(${JSON.stringify(heldPath)}, String(process.pid));
+    setInterval(() => {}, 10000);
+  `;
+  const child = spawnScript(src);
+  t.after(() => {
+    try {
+      process.kill(child.pid, "SIGKILL");
+    } catch {
+      /* */
+    }
+  });
+  const exited = waitExit(child);
+  await waitFor(() => fs.existsSync(heldPath));
+  process.kill(child.pid, "SIGKILL");
+  const { signal } = await exited;
+  assert.equal(signal, "SIGKILL");
+  const got = acquireDaemonLock(lockPath);
+  assert.equal(got.ok, true);
+  assert.equal(got.pid, process.pid);
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  releaseDaemonLock(lockPath);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("legacy text lock with a dead pid is replaced", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const dead = await plantDeadLock(path.join(dir, "planter.lock"));
   fs.writeFileSync(lockPath, `${dead}\n`);
-  fs.writeFileSync(reapPath, `${process.pid}\n`);
-  const kill = (pid, sig) => {
-    if (pid === dead) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
-    return process.kill(pid, sig);
-  };
-  const before = fs.readFileSync(lockPath, "utf8");
-  const got = acquireDaemonLock(lockPath, { pid: 4242, kill });
+  const got = acquireDaemonLock(lockPath, { pid: 4242 });
+  assert.equal(got.ok, true);
+  assert.equal(got.pid, 4242);
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  releaseDaemonLock(lockPath, { pid: 4242 });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("legacy text lock with a live pid is refused", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  fs.writeFileSync(lockPath, `${process.pid}\n`);
+  const got = acquireDaemonLock(lockPath, { pid: 4242 });
   assert.equal(got.ok, false);
-  assert.equal(fs.readFileSync(lockPath, "utf8"), before);
-  assert.equal(fs.existsSync(reapPath), true);
-  assert.equal(fs.readFileSync(reapPath, "utf8").trim(), String(process.pid));
+  assert.equal(got.pid, process.pid);
+  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(process.pid));
   fs.rmSync(dir, { recursive: true, force: true });
 });

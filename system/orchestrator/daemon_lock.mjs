@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-
-const REAP_STALE_MS = 30_000;
+import { DatabaseSync } from "node:sqlite";
 
 function parsePid(raw) {
   const n = Number(String(raw || "").trim());
@@ -18,61 +17,103 @@ function isAlive(pid, killFn) {
   }
 }
 
-function readPid(filePath) {
+function isBusy(err) {
+  if (!err || err.code !== "ERR_SQLITE_ERROR") return false;
+  if (err.errcode === 5) return true;
+  return /busy|database is locked/i.test(`${err.message || ""} ${err.errstr || ""}`);
+}
+
+function isNotADb(err) {
+  if (!err || err.code !== "ERR_SQLITE_ERROR") return false;
+  if (err.errcode === 26) return true;
+  return /not a database/i.test(`${err.message || ""} ${err.errstr || ""}`);
+}
+
+function holderPid(row) {
+  if (!row) return null;
+  const n = Number(row.pid);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function openLockDb(lockPath) {
+  return new DatabaseSync(lockPath, { timeout: 5000 });
+}
+
+function bestEffortPid(lockPath) {
   try {
-    return parsePid(fs.readFileSync(filePath, "utf8"));
+    const db = openLockDb(lockPath);
+    try {
+      const row = db.prepare("SELECT pid FROM holder WHERE id = 1").get();
+      return holderPid(row);
+    } finally {
+      db.close();
+    }
   } catch {
     return null;
   }
 }
 
-function unlinkOwn(tmpPath) {
+function acquireSqlite(lockPath, pid, kill) {
+  const db = openLockDb(lockPath);
+  let begun = false;
   try {
-    fs.unlinkSync(tmpPath);
-  } catch {
-    /* */
+    db.exec("BEGIN IMMEDIATE");
+    begun = true;
+    db.exec(`CREATE TABLE IF NOT EXISTS holder (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      pid INTEGER NOT NULL,
+      acquired_at TEXT NOT NULL
+    )`);
+    const row = db.prepare("SELECT pid FROM holder WHERE id = 1").get();
+    const existing = holderPid(row);
+    if (existing && existing !== pid && isAlive(existing, kill)) {
+      db.exec("ROLLBACK");
+      begun = false;
+      return { ok: false, pid: existing };
+    }
+    db.prepare("INSERT OR REPLACE INTO holder (id, pid, acquired_at) VALUES (1, ?, ?)").run(
+      pid,
+      new Date().toISOString(),
+    );
+    db.exec("COMMIT");
+    begun = false;
+    return { ok: true, pid };
+  } catch (err) {
+    if (begun) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        /* */
+      }
+    }
+    throw err;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* */
+    }
   }
 }
 
-function acquireReaperLock(reapPath, pid, kill) {
-  const create = () => {
-    const fd = fs.openSync(reapPath, "wx");
-    try {
-      fs.writeSync(fd, `${pid}\n`);
-    } finally {
-      fs.closeSync(fd);
-    }
-  };
+function migrateLegacyTextLock(lockPath, pid, kill) {
+  // One-time path for plain-text pid locks written before this SQLite-backed lock.
+  let textPid = null;
   try {
-    create();
-    return true;
-  } catch (err) {
-    if (err.code !== "EEXIST") throw err;
-  }
-  let reapPid = null;
-  let mtimeMs = NaN;
-  try {
-    reapPid = parsePid(fs.readFileSync(reapPath, "utf8"));
-    mtimeMs = fs.statSync(reapPath).mtimeMs;
+    textPid = parsePid(fs.readFileSync(lockPath, "utf8"));
   } catch {
-    return false;
+    return { ok: false, pid: null };
   }
-  const stale =
-    Number.isFinite(mtimeMs) &&
-    Date.now() - mtimeMs > REAP_STALE_MS &&
-    !isAlive(reapPid, kill);
-  if (!stale) return false;
+  if (textPid && isAlive(textPid, kill)) return { ok: false, pid: textPid };
   try {
-    fs.unlinkSync(reapPath);
+    fs.unlinkSync(lockPath);
   } catch {
-    /* */
+    return { ok: false, pid: null };
   }
   try {
-    create();
-    return true;
-  } catch (err) {
-    if (err.code === "EEXIST") return false;
-    throw err;
+    return acquireSqlite(lockPath, pid, kill);
+  } catch {
+    return { ok: false, pid: null };
   }
 }
 
@@ -81,85 +122,29 @@ export function acquireDaemonLock(
   { pid = process.pid, kill = process.kill.bind(process) } = {},
 ) {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-  const dir = path.dirname(lockPath);
-  const base = path.basename(lockPath);
-  const tmpPath = path.join(dir, `${base}.${pid}.tmp`);
-  fs.writeFileSync(tmpPath, `${pid}\n`);
-
-  const tryLink = () => {
-    fs.linkSync(tmpPath, lockPath);
-    unlinkOwn(tmpPath);
-    return { ok: true, pid };
-  };
-
   try {
-    return tryLink();
+    return acquireSqlite(lockPath, pid, kill);
   } catch (err) {
-    if (err.code !== "EEXIST") {
-      unlinkOwn(tmpPath);
-      throw err;
-    }
-  }
-
-  const existing = readPid(lockPath);
-  if (existing && isAlive(existing, kill)) {
-    unlinkOwn(tmpPath);
-    return { ok: false, pid: existing };
-  }
-
-  const failExist = () => {
-    unlinkOwn(tmpPath);
-    return { ok: false, pid: readPid(lockPath) };
-  };
-
-  const reapPath = `${lockPath}.reap`;
-  let reaperHeld = false;
-  try {
-    if (!acquireReaperLock(reapPath, pid, kill)) {
-      unlinkOwn(tmpPath);
-      return { ok: false, pid: readPid(lockPath) };
-    }
-    reaperHeld = true;
-
-    const again = readPid(lockPath);
-    if (again !== existing || isAlive(again, kill)) {
-      unlinkOwn(tmpPath);
-      return { ok: false, pid: again };
-    }
-
-    const stalePath = path.join(dir, `${base}.stale.${Date.now()}.${pid}`);
-    try {
-      fs.renameSync(lockPath, stalePath);
-    } catch (err) {
-      if (err.code !== "ENOENT") {
-        unlinkOwn(tmpPath);
-        throw err;
-      }
-      try {
-        return tryLink();
-      } catch (e2) {
-        if (e2.code === "EEXIST") return failExist();
-        unlinkOwn(tmpPath);
-        throw e2;
-      }
-    }
-
-    try {
-      return tryLink();
-    } catch (err) {
-      if (err.code === "EEXIST") return failExist();
-      unlinkOwn(tmpPath);
-      throw err;
-    }
-  } finally {
-    if (reaperHeld) unlinkOwn(reapPath);
+    if (isBusy(err)) return { ok: false, pid: bestEffortPid(lockPath) };
+    if (isNotADb(err)) return migrateLegacyTextLock(lockPath, pid, kill);
+    throw err;
   }
 }
 
 export function releaseDaemonLock(lockPath, { pid = process.pid } = {}) {
   try {
-    const existing = parsePid(fs.readFileSync(lockPath, "utf8"));
-    if (existing === pid) fs.unlinkSync(lockPath);
+    const db = openLockDb(lockPath);
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      db.prepare("DELETE FROM holder WHERE pid = ?").run(pid);
+      db.exec("COMMIT");
+    } finally {
+      try {
+        db.close();
+      } catch {
+        /* */
+      }
+    }
   } catch {
     /* */
   }
