@@ -8,5 +8,6 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 PROMPT="${1:-${PROMPT:?PROMPT is required}}"
 mkdir -p "$SESSION_DIR"
 exec pi -p --offline --mode json --provider "$PROVIDER" --model "$MODEL" --thinking high \
-   --no-builtin-tools --no-extensions --no-skills --no-prompt-templates --no-context-files \
+   --no-extensions --no-skills --no-prompt-templates --no-context-files \
+   -e "$ROOT/system/loops/website/pi-guard.ts" --tools read,write,edit,ls,grep,find \
    --session-dir "$SESSION_DIR" --session-id "$SESSION_ID" "$PROMPT"

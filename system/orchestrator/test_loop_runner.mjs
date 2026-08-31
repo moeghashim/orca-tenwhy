@@ -360,3 +360,124 @@ test("H: executor output with no JSON block → revise FORMAT, reviewer never ca
     .get(result.loopRunId);
   assert.equal(JSON.parse(ev.payload).materialize, false);
 });
+
+function designerFence() {
+  const payload = {
+    tokens: {
+      color: { bg: "#f6f1ea", surface: "#fffaf4", text: "#2a241c", accent: "#1a6b63" },
+      type: { family: { ui: "Georgia, serif", mono: "ui-monospace, monospace" } },
+      space: { unit: 8 },
+      radius: 12,
+    },
+    BRAND_MD: "Voice: calm.",
+    logo_svg:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="32"><text y="24">Acme</text></svg>',
+    IMAGE_BRIEF_MD: "| asset | path | description | size |\n| hero | /images/hero.svg | hero | 800x400 |\n",
+  };
+  return `ok\n\n\`\`\`json\n${JSON.stringify(payload)}\n\`\`\`\n`;
+}
+
+test("K: website prepare success emits loop_run.prepared then iterations", async (t) => {
+  const ctx = setup();
+  t.after(() => {
+    ctx.db.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.join(ctx.workdir, "research"), { recursive: true });
+  fs.writeFileSync(
+    path.join(ctx.workdir, "research/RESEARCH.json"),
+    JSON.stringify({
+      company: {
+        name: "Acme Dental",
+        summary: "clinic",
+        customer_products: [
+          { id: "cp_01", name: "Teeth whitening", price: 80, url: "" },
+          { id: "cp_02", name: "Clear aligners", price: 1200, url: "" },
+          { id: "cp_03", name: "Hygiene checkup", price: 40, url: "" },
+        ],
+      },
+    }),
+  );
+  const seen = [];
+  const inner = createFixtureAdapter({
+    executor: ["built site"],
+    reviewer: [designerFence(), JSON.stringify({ verdict: "approve", notes: "1. 2. 3. 4. 5." })],
+  });
+  const capturing = {
+    async run(args) {
+      seen.push(args.role);
+      return inner.run(args);
+    },
+  };
+  const result = await runLoop({
+    db: ctx.db,
+    dbPath: ctx.dbPath,
+    loopName: "website",
+    engagementId: ctx.engagementId,
+    attempt: 0,
+    workdir: ctx.workdir,
+    config: CONFIG,
+    adapter: capturing,
+    gateRunner: async () => [{ check_name: "ok", passed: 1, detail: "" }],
+  });
+  assert.equal(result.status, "gate_passed");
+  assert.deepEqual(seen, ["reviewer", "executor", "reviewer"]);
+  assert.equal(fs.existsSync(path.join(ctx.workdir, "brand/tokens.json")), true);
+  assert.deepEqual(kinds(ctx.db, result.loopRunId), [
+    "loop_run.started",
+    "loop_run.prepared",
+    "iteration.recorded",
+    "gate.checked",
+    "loop_run.finished",
+  ]);
+});
+
+test("L: website prepare failure records design_spec and gate_failed", async (t) => {
+  const ctx = setup();
+  t.after(() => {
+    ctx.db.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.join(ctx.workdir, "research"), { recursive: true });
+  fs.writeFileSync(
+    path.join(ctx.workdir, "research/RESEARCH.json"),
+    JSON.stringify({ company: { name: "Acme Dental", customer_products: [] } }),
+  );
+  let execCalls = 0;
+  const inner = createFixtureAdapter({
+    executor: ["should not run"],
+    reviewer: ["not json at all"],
+  });
+  const capturing = {
+    async run(args) {
+      if (args.role === "executor") execCalls += 1;
+      return inner.run(args);
+    },
+  };
+  const result = await runLoop({
+    db: ctx.db,
+    dbPath: ctx.dbPath,
+    loopName: "website",
+    engagementId: ctx.engagementId,
+    attempt: 0,
+    workdir: ctx.workdir,
+    config: CONFIG,
+    adapter: capturing,
+    gateRunner: async () => {
+      throw new Error("gate must not run");
+    },
+  });
+  assert.equal(result.status, "gate_failed");
+  assert.equal(execCalls, 0);
+  const checks = ctx.db
+    .prepare("SELECT check_name, passed FROM gate_checks WHERE loop_run_id = ?")
+    .all(result.loopRunId);
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0].check_name, "design_spec");
+  assert.equal(checks[0].passed, 0);
+  const runRow = ctx.db.prepare("SELECT status, pi_trace_ref FROM loop_runs WHERE id = ?").get(result.loopRunId);
+  assert.equal(runRow.status, "gate_failed");
+  assert.equal(runRow.pi_trace_ref, "fixture://reviewer/0");
+  assert.ok(kinds(ctx.db, result.loopRunId).includes("gate.checked"));
+  assert.ok(!kinds(ctx.db, result.loopRunId).includes("loop_run.prepared"));
+});

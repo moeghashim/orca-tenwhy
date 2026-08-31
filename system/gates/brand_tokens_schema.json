@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["color", "type", "space", "radius"],
+  "properties": {
+    "color": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["bg", "surface", "text", "accent"],
+      "properties": {
+        "bg": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "surface": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "text": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+      }
+    },
+    "type": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["family"],
+      "properties": {
+        "family": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["ui", "mono"],
+          "properties": {
+            "ui": { "type": "string", "minLength": 1 },
+            "mono": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "space": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["unit"],
+      "properties": {
+        "unit": { "type": "number" }
+      }
+    },
+    "radius": { "type": "number" }
+  }
+}

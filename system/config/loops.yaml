@@ -20,7 +20,7 @@ loops:
   website:
     inputs: [research/RESEARCH.json]
     depends_on: [company-research]
-    tools: []
+    tools: [read, write, edit, ls, grep, find]
     gate: system/gates/website_gate.py
     outputs: [brand/, website/]
 edges:

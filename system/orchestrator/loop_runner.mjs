@@ -187,6 +187,27 @@ function readOptional(filePath) {
   }
 }
 
+function previousGateText(db, engagementId, loopName, loopRunId) {
+  if (!engagementId || !loopName) return "";
+  const prior = db
+    .prepare(
+      `SELECT id FROM loop_runs
+       WHERE engagement_id = ? AND loop_name = ? AND id != ?
+         AND status IN ('gate_failed', 'gate_passed')
+       ORDER BY finished_at DESC, rowid DESC
+       LIMIT 1`,
+    )
+    .get(engagementId, loopName, loopRunId);
+  if (!prior) return "";
+  const checks = db
+    .prepare("SELECT check_name, passed, detail FROM gate_checks WHERE loop_run_id = ? ORDER BY rowid")
+    .all(prior.id);
+  if (!checks.length) return "";
+  return checks
+    .map((c) => `${c.check_name}: ${c.passed ? "pass" : "fail"} ${c.detail ?? ""}`.trimEnd())
+    .join("\n");
+}
+
 function buildReviewerPrompt({
   loopMod,
   loopName,
@@ -195,12 +216,20 @@ function buildReviewerPrompt({
   workdir,
   db,
   loopRunId,
+  engagementId,
   vars = {},
 }) {
   let base;
   if (loopMod?.reviewerPrompt) {
+    const previous_gate = previousGateText(db, engagementId, loopName, loopRunId);
+    const extra = {};
+    if (typeof loopMod.renderManifest === "function") {
+      extra.manifest = loopMod.renderManifest({ workdir, previous_gate });
+    }
     base = loopMod.reviewerPrompt({
       ...vars,
+      ...extra,
+      previous_gate,
       research_json: readOptional(path.join(workdir, "research/RESEARCH.json")),
       sources_md: readOptional(path.join(workdir, "research/SOURCES.md")),
       scrapes_table: scrapesTable(db, loopRunId),
@@ -323,6 +352,72 @@ export async function runLoop({
   const loopMod = await loadLoopModule(loopName);
   const vars = engagementVars(db, engagementId, inputs ?? {});
 
+  if (typeof loopMod?.prepare === "function") {
+    const prepSessionId = randomUUID();
+    let prep;
+    try {
+      prep = await loopMod.prepare({
+        workdir,
+        db,
+        dbPath,
+        loopRunId,
+        engagementId,
+        adjustedInstructions,
+        adapter,
+        config,
+        inputs: inputs ?? {},
+        vars,
+        sessionId: prepSessionId,
+        now: utcNow(),
+      });
+    } catch (err) {
+      return failRunOnError(db, {
+        engagementId,
+        loopRunId,
+        n: 0,
+        role: "designer",
+        err,
+        iterations,
+        traceRef: err?.traceRef ?? lastExecutorTrace,
+      });
+    }
+    if (!prep?.ok) {
+      const detail = prep?.error || "prepare failed";
+      const traceRef = prep?.traceRef ?? null;
+      db.prepare(
+        "INSERT INTO gate_checks (id, loop_run_id, check_name, passed, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run(prefixedId("chk"), loopRunId, "design_spec", 0, detail, utcNow());
+      insertEvent(db, {
+        engagementId,
+        loopRunId,
+        kind: "gate.checked",
+        payload: {
+          checks: [{ check_name: "design_spec", passed: 0, detail }],
+          passed: false,
+        },
+      });
+      finishRun(db, { loopRunId, status: "gate_failed", traceRef });
+      insertEvent(db, {
+        engagementId,
+        loopRunId,
+        kind: "loop_run.finished",
+        payload: { status: "gate_failed", reason: "design_spec" },
+      });
+      return {
+        loopRunId,
+        status: "gate_failed",
+        iterations,
+        gateChecks: [{ check_name: "design_spec", passed: 0, detail }],
+      };
+    }
+    insertEvent(db, {
+      engagementId,
+      loopRunId,
+      kind: "loop_run.prepared",
+      payload: { traceRef: prep.traceRef ?? null },
+    });
+  }
+
   for (let n = 1; n <= cap; n++) {
     const execSessionId = randomUUID();
     const execPrompt = buildExecutorPrompt({
@@ -410,6 +505,7 @@ export async function runLoop({
       workdir,
       db,
       loopRunId,
+      engagementId,
       vars,
     });
     let revResult;
