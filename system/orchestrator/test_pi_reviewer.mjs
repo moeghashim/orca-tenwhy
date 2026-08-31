@@ -142,3 +142,33 @@ test("reviewer run with a clean session JSONL succeeds", async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("adapter closes stdin: a pi that reads stdin to EOF before answering still completes", async () => {
+  // Regression for the live-run hang: with a piped, never-closed stdin, `pi -p` blocks forever.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-pi-stdin-"));
+  const bin = path.join(tmp, "bin"); fs.mkdirSync(bin, { recursive: true });
+  const stub = path.join(bin, "pi");
+  fs.writeFileSync(stub, `#!/bin/sh
+sid=""; dir=""
+while [ $# -gt 0 ]; do case "$1" in --session-id) sid="$2"; shift ;; --session-dir) dir="$2"; shift ;; esac; shift; done
+cat >/dev/null            # block until stdin EOF (hangs if the parent leaves stdin open)
+mkdir -p "$dir/slug"
+echo '{"type":"session","version":3,"id":"'"$sid"'"}' > "$dir/slug/2026-08-31T00-00-00-000Z_$sid.jsonl"
+echo '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{\\"verdict\\":\\"approve\\",\\"notes\\":\\"ok\\"}"}],"stopReason":"stop"}}'
+`);
+  fs.chmodSync(stub, 0o755);
+  fs.mkdirSync(path.join(tmp, "system/loops/_shared"), { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "system/loops/_shared/run-pi-reviewer.sh"), path.join(tmp, "system/loops/_shared/run-pi-reviewer.sh"));
+  const origPath = process.env.PATH; process.env.PATH = `${bin}:${origPath}`;
+  try {
+    const adapter = createPiAdapter({ repoRoot: tmp, dbPath: path.join(tmp, "t.db") });
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("adapter hung: stdin left open")), 8000));
+    const res = await Promise.race([
+      adapter.run({ role: "reviewer", loopName: "company-research", n: 1, prompt: "p", sessionId: "stdin-1", workdir: path.join(tmp, "work"), engagementId: "e", loopRunId: "r", config: CONFIG }),
+      timeout,
+    ]);
+    assert.match(res.text, /approve/);
+  } finally {
+    process.env.PATH = origPath; fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

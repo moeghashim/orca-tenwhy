@@ -135,6 +135,9 @@ function runPiScript({ script, args, env, cwd }) {
     const child = spawn(script, args, {
       cwd,
       env: { ...process.env, ...env },
+      // stdin must be closed: `pi -p` waits for EOF on a piped stdin and never
+      // starts the model turn (found in the first real engagement, 2026-08-31).
+      stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
