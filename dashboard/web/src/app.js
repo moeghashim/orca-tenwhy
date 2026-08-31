@@ -538,9 +538,13 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
       el(
         "a",
         { class: "banner needs", href: "#/failures", "data-banner": "needs_human" },
-        el("span", { class: "mono" }, `⚑ ${nNeeds} runs need human input`),
-        el("span", {}, "every other loop is proceeding without you"),
-        el("span", { class: "mono" }, "open failures →"),
+        el(
+          "span",
+          { class: "banner-left" },
+          el("span", { class: "mono" }, `⚑ ${nNeeds} runs need human input`),
+          el("span", {}, "every other loop is proceeding without you"),
+        ),
+        el("span", { class: "mono banner-right" }, "open failures →"),
       ),
     );
   }

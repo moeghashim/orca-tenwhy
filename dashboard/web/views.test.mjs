@@ -162,6 +162,16 @@ test("sidebar wordmark is one nowrap line tenwhy / loop graph with operations co
   assert.match(css, /\.wordmark\s*\{[^}]*white-space:\s*nowrap/s);
 });
 
+test("needs_human banner pins open failures to the right edge", () => {
+  const { root } = mount("#/runs");
+  const banner = root.querySelector("[data-banner='needs_human']");
+  const css = fs.readFileSync(new URL("./src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.banner\s*\{[^}]*justify-content:\s*space-between/s);
+  assert.ok(banner.querySelector(".banner-right"));
+  assert.equal(banner.querySelector(".banner-right").textContent, "open failures →");
+  assert.match(banner.querySelector(".banner-left").textContent, /⚑ 1 runs need human input/);
+});
+
 test("Runs header summary lists engagement and active counts", () => {
   const { root } = mount("#/runs");
   const sum = root.querySelector("[data-runs-summary]");
