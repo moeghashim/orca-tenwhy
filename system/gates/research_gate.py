@@ -117,6 +117,16 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
                 check("schema_valid", False, exc.message),
                 *[check(n, False, SKIP) for n in CHECK_NAMES[1:]],
             ]
+        product_ids = [
+            p.get("id")
+            for p in ((data.get("company") or {}).get("customer_products") or [])
+            if p.get("id")
+        ]
+        if len(product_ids) != len(set(product_ids)):
+            return [
+                check("schema_valid", False, "duplicate customer_product id"),
+                *[check(n, False, SKIP) for n in CHECK_NAMES[1:]],
+            ]
         schema_ok = check("schema_valid", True, "ok")
         ok_urls = urls_200(conn, loop_run_id)
         competitors = data.get("competitors") or []
@@ -152,6 +162,7 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
         else:
             comp_detail = f"{len(seen_urls)} distinct competitors with 200 scrapes"
         products = (data.get("company") or {}).get("customer_products") or []
+        known_ids = {p.get("id") for p in products if p.get("id")}
         matches = data.get("product_matches") or []
         total = len(products)
         distinct = set()
@@ -160,6 +171,9 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
             src = m.get("source_url") or ""
             price = m.get("competitor_price")
             pid = m.get("customer_product_id")
+            if pid and pid not in known_ids:
+                offending.append(f"unknown customer_product_id {pid}")
+                continue
             if not is_number(price) or src not in ok_urls:
                 offending.append(f"{pid}@{src or '(no source)'}")
                 continue

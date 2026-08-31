@@ -1,0 +1,25 @@
+{
+  "company": {
+    "name": "Acme Dental",
+    "summary": "Boutique dental clinic in Amman",
+    "customer_products": [
+      { "id": "cp_01", "name": "Teeth whitening", "price": 80, "url": "https://acme.example/whitening" },
+      { "id": "cp_02", "name": "Aligners", "price": 1200, "url": "https://acme.example/aligners" }
+    ]
+  },
+  "competitors": [
+    { "name": "C1", "url": "https://c1.example/", "summary": "rival 1", "products": [{ "name": "Whitening kit", "price": 99, "url": "https://c1.example/pricing" }] },
+    { "name": "C2", "url": "https://c2.example/", "summary": "rival 2", "products": [] },
+    { "name": "C3", "url": "https://c3.example/", "summary": "rival 3", "products": [] },
+    { "name": "C4", "url": "https://c4.example/", "summary": "rival 4", "products": [] },
+    { "name": "C5", "url": "https://c5.example/", "summary": "rival 5", "products": [] }
+  ],
+  "product_matches": [
+    { "customer_product_id": "cp_99", "competitor": "C1", "competitor_product": "Whitening kit", "competitor_price": 99, "source_url": "https://c1.example/pricing" }
+  ],
+  "enhancement_ideas": [
+    { "idea": "Same-day whitening", "rationale": "C1 advertises same-day kits on its pricing page." },
+    { "idea": "Aligner financing", "rationale": "C2 markets monthly payments that Acme does not." },
+    { "idea": "Arabic + English copy", "rationale": "C3's homepage is bilingual; Acme is English-only." }
+  ]
+}
