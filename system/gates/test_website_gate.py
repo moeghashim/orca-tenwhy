@@ -140,6 +140,29 @@ class WebsiteGateTests(unittest.TestCase):
         _, checks, _ = run_case("fail_build_alias")
         self.assertIn("vite", checks[1]["detail"])
 
+    def test_fail_build_absolute_import(self):
+        rc, checks, workdir = run_case("fail_build_absolute_import")
+        built = next(c for c in checks if c["check_name"] == "build_ok")
+        dist = workdir / "website" / "dist"
+        leaked = False
+        if dist.exists():
+            for p in dist.rglob("*"):
+                if not p.is_file():
+                    continue
+                try:
+                    body = p.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                if "localhost" in body and "127.0.0.1" in body:
+                    leaked = True
+                if "/etc/hosts" in body and "root:" in body:
+                    leaked = True
+        if built["passed"]:
+            self.assertFalse(leaked, "dist leaked /etc content")
+        else:
+            self.assertEqual(rc, 1)
+            self.assertFalse(leaked, "dist leaked /etc content on failed build")
+
     def test_fail_build_dup_dep(self):
         self._assert_case("fail_build_dup_dep", 1, "build_ok")
         _, checks, _ = run_case("fail_build_dup_dep")
