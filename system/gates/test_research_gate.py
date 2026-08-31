@@ -96,6 +96,9 @@ class ResearchGateTests(unittest.TestCase):
     def test_fail_sources(self):
         self._assert_case("fail_sources", 1, "sources_complete")
 
+    def test_fail_competitors_dup(self):
+        self._assert_case("fail_competitors_dup", 1, "competitors≥5")
+
 
 if __name__ == "__main__":
     unittest.main()

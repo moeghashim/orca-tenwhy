@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import jsonschema
 
@@ -76,7 +78,17 @@ def parse_source_rows(text: str) -> dict[tuple[str, str], int]:
 
 
 def is_number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def normalize_url(url: str) -> str:
+    parts = urlsplit(str(url).strip())
+    path = parts.path.rstrip("/")
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, "", ""))
+
+
+def normalize_name(name: str) -> str:
+    return str(name or "").strip().lower()
 
 
 def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
@@ -109,17 +121,36 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
         ok_urls = urls_200(conn, loop_run_id)
         competitors = data.get("competitors") or []
         failing = []
+        seen_urls: dict[str, str] = {}
+        seen_names: dict[str, str] = {}
+        dupes = []
         for c in competitors:
             url = c.get("url") or ""
+            name = c.get("name") or ""
             if url not in ok_urls:
-                failing.append(c.get("name") or url or "(unnamed)")
-        comp_ok = len(competitors) >= 5 and not failing
-        if len(competitors) < 5:
-            comp_detail = f"{len(competitors)} competitors (need ≥ 5)"
-        elif failing:
+                failing.append(name or url or "(unnamed)")
+            nurl = normalize_url(url)
+            nname = normalize_name(name)
+            label = name or url or "(unnamed)"
+            if nurl and nurl in seen_urls:
+                dupes.append(f"url {label}")
+            elif nurl:
+                seen_urls[nurl] = label
+            if nname and nname in seen_names:
+                dupes.append(f"name {label}")
+            elif nname:
+                seen_names[nname] = label
+        distinct_ok = len(seen_urls) >= 5 and len(seen_names) >= 5
+        comp_ok = distinct_ok and not failing
+        if failing:
             comp_detail = "no 200 scrape: " + ", ".join(failing)
+        elif not distinct_ok:
+            comp_detail = (
+                f"{len(seen_urls)} distinct urls / {len(seen_names)} distinct names (need ≥ 5 each)"
+                + ("; duplicates: " + ", ".join(dupes) if dupes else "")
+            )
         else:
-            comp_detail = f"{len(competitors)} competitors with 200 scrapes"
+            comp_detail = f"{len(seen_urls)} distinct competitors with 200 scrapes"
         products = (data.get("company") or {}).get("customer_products") or []
         matches = data.get("product_matches") or []
         total = len(products)
