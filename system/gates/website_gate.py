@@ -139,6 +139,13 @@ def scan_forbidden(web: Path) -> str | None:
         return None
     for dirpath, dirnames, filenames in os.walk(web, followlinks=False):
         rel_dir = os.path.relpath(dirpath, web)
+        if rel_dir == ".":
+            # website/dist and website/node_modules are the gate's own artifacts (copied back
+            # after a previous build); the executor cannot write them (path guard). Ignore
+            # them here instead of flagging them — a real symlink is still caught below.
+            for d in list(dirnames):
+                if d in {"dist", "node_modules"} and not (Path(dirpath) / d).is_symlink():
+                    dirnames.remove(d)
         for d in list(dirnames):
             p = Path(dirpath) / d
             rel = str(Path(rel_dir) / d) if rel_dir != "." else d

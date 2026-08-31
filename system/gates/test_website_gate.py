@@ -686,3 +686,21 @@ class ImageBriefParseTests(unittest.TestCase):
         text = "| asset | path | description | size |\n|---|---|---|---|\n| A | `/images/a.svg\" | x | 1x1 |\n| B | '/images/b.svg` | y | 1x1 |\n| C | \"/images/c.svg | z | 1x1 |\n"
         # mismatched wrappers survive verbatim (so resolve_in_dist rejects them) — never silently repaired
         self.assertEqual(mod.parse_image_brief_paths(text), ['`/images/a.svg"', "'/images/b.svg`", '"/images/c.svg'])
+
+
+class GateArtifactsTests(unittest.TestCase):
+    def test_previous_dist_copied_back_is_not_forbidden(self):
+        # live-run finding: attempt 2 failed build_ok with "forbidden executable/config file: dist"
+        # because the gate had copied its own dist/ back into website/ after attempt 1.
+        import importlib.util, pathlib, tempfile, shutil
+        spec = importlib.util.spec_from_file_location("website_gate", pathlib.Path(__file__).with_name("website_gate.py"))
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as tmp:
+            web = pathlib.Path(tmp) / "website"; web.mkdir()
+            (web / "index.html").write_text("<html></html>")
+            (web / "dist").mkdir(); (web / "dist" / "index.html").write_text("<html>built</html>")
+            (web / "node_modules").mkdir(); (web / "node_modules" / "x.js").write_text("")
+            self.assertIsNone(mod.scan_forbidden(web))
+            # a symlinked dist is still forbidden
+            shutil.rmtree(web / "dist"); (web / "dist").symlink_to(pathlib.Path(tmp))
+            self.assertIsNotNone(mod.scan_forbidden(web))
