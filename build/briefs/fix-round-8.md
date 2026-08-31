@@ -1,0 +1,8 @@
+# Follow-up brief — round 8 (Codex `REVIEWED: P3 issues #r8` on round 7, 2026-08-31) — commits `P3-fix8: …`, each with a failing-then-passing test
+
+1. **Redact before serialisation** (`system/orchestrator/util.mjs:46`): apply value redaction to every string field of an event payload / log record **before** `JSON.stringify` (walk the object), and additionally to the serialised text; test with a secret containing `"` and `\` characters — neither the raw nor the JSON-escaped form may appear in the stored payload.
+2. **Prepare-error log completeness** (`loop_runner.mjs:379`): the error path of the prepare turn must log the same fields as success (session id, exit code when known, duration ms, tool count); test the failure path.
+3. **Stale-lock contention** (`daemon_lock.mjs:64`): two contenders finding a dead pid can both rename the lock and both acquire. Make stale handling atomic: rename the stale lock to `daemon.lock.stale.<ts>.<mypid>`; only the contender whose `rename` succeeded proceeds to `link()`; the other's `rename` fails (`ENOENT`) and it must retry `link()` (which now fails `EEXIST` against the winner's fresh lock → exit 3). Test: two children racing a dead-pid stale lock → exactly one acquires.
+4. **Lock release after the tick finishes** (`orchestrator.mjs:400`): on SIGINT/SIGTERM set a stop flag, `await` the in-flight tick, then release the lock and exit; a second daemon started during that window must still see the lock held. Test: start a daemon on a fixture with a slow tick, send SIGINT mid-tick, immediately attempt a second acquire → exit 3 until the first exits.
+
+Finish with `DONE fix8 <hash…>` — only hashes in `git log`.
