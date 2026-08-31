@@ -2,6 +2,7 @@
 
 # Runs every test that exists so far. Must exit 0.
 verify:
+	bash system/tools/check_commit_identity.sh
 	bash system/db/test_schema.sh
 	node system/config/lint_loops.js
 	system/tools/.venv/bin/python system/tools/test_scrape.py
