@@ -187,8 +187,22 @@ def validate_package(pkg: dict) -> str | None:
     return None
 
 
+def _cellar_keg(real_path: str) -> str | None:
+    parts = Path(real_path).parts
+    if "Cellar" not in parts:
+        return None
+    i = parts.index("Cellar")
+    if i < 1 or len(parts) < i + 3:
+        return None
+    keg = str(Path(*parts[: i + 3]))
+    if keg.rstrip("/") == "/opt/homebrew" or "/opt/homebrew/etc" in keg:
+        return None
+    return keg
+
+
 def node_link_kegs(node_real: str) -> list[str]:
-    """Homebrew kegs the node binary links, never the brew prefix itself."""
+    """Resolved Homebrew Cellar keg dirs from `otool -L`; never prefix trees like etc/."""
+    paths = [node_real]
     try:
         out = subprocess.run(
             ["/usr/bin/otool", "-L", node_real],
@@ -196,31 +210,40 @@ def node_link_kegs(node_real: str) -> list[str]:
             text=True,
         )
     except OSError:
-        return []
+        out = None
+    if out:
+        for raw in (out.stdout or "").splitlines()[1:]:
+            p = raw.strip().split()[0] if raw.strip() else ""
+            if p:
+                paths.append(p)
     seen: list[str] = []
-    for raw in (out.stdout or "").splitlines()[1:]:
-        path = raw.strip().split()[0] if raw.strip() else ""
-        if not path.startswith("/opt/homebrew/"):
-            continue
-        parts = Path(path).parts
-        if len(parts) >= 5 and parts[1:4] == ("opt", "homebrew", "opt"):
-            keg = str(Path(*parts[:5]))
-        else:
-            continue
-        if keg in seen or keg.rstrip("/") == "/opt/homebrew":
-            continue
-        seen.append(keg)
+    for p in paths:
         try:
-            resolved = str(Path(keg).resolve())
+            real = str(Path(p).resolve())
         except OSError:
-            resolved = keg
-        if resolved not in seen and resolved.rstrip("/") != "/opt/homebrew":
-            seen.append(resolved)
-        formula = Path(keg).name
-        etc = Path("/opt/homebrew/etc") / formula
-        if etc.is_dir() and str(etc) not in seen:
-            seen.append(str(etc))
+            continue
+        keg = _cellar_keg(real)
+        if keg and keg not in seen:
+            seen.append(keg)
     return seen
+
+
+def host_openssl_conf() -> str | None:
+    for p in (
+        Path("/opt/homebrew/etc/openssl@3/openssl.cnf"),
+        Path("/opt/homebrew/etc/openssl/openssl.cnf"),
+        Path("/etc/ssl/openssl.cnf"),
+    ):
+        if p.is_file():
+            return str(p)
+    for keg in node_link_kegs(str(Path(shutil.which("node") or "/opt/homebrew/bin/node").resolve())):
+        bottle = Path(keg) / ".bottle" / "etc"
+        if not bottle.is_dir():
+            continue
+        found = list(bottle.rglob("openssl.cnf"))
+        if found:
+            return str(found[0])
+    return None
 
 
 def node_paths() -> tuple[str, str, str, str, list[str]]:
@@ -290,7 +313,7 @@ def gate_env(home: Path, cache: Path) -> dict:
     tmp.mkdir(parents=True, exist_ok=True)
     user.write_text("", encoding="utf-8")
     glob.write_text("", encoding="utf-8")
-    return {
+    env = {
         "HOME": str(home),
         "PATH": GATE_PATH,
         "NPM_CONFIG_USERCONFIG": str(user),
@@ -300,6 +323,12 @@ def gate_env(home: Path, cache: Path) -> dict:
         "LC_ALL": "C",
         "TMPDIR": str(tmp),
     }
+    src = host_openssl_conf()
+    if src:
+        dest = home / "openssl.cnf"
+        shutil.copyfile(src, dest)
+        env["OPENSSL_CONF"] = str(dest.resolve())
+    return env
 
 
 def run_in_sandbox(

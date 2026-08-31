@@ -142,7 +142,7 @@ class WebsiteGateTests(unittest.TestCase):
 
     def test_build_preview_profiles_are_a_real_read_allowlist(self):
         sys.path.insert(0, str(GATE.parent))
-        from website_gate import seatbelt_profile
+        from website_gate import gate_env, node_link_kegs, seatbelt_profile
 
         sandbox = GATE.parent / "sandbox"
         for name in ("build.sb", "preview.sb"):
@@ -156,7 +156,7 @@ class WebsiteGateTests(unittest.TestCase):
             self.assertIn("/usr/share", text)
             self.assertIn("/System/Library", text)
             self.assertIn("/private/etc/localtime", text)
-        tmp = Path(tempfile.mkdtemp())
+        tmp = Path(tempfile.mkdtemp()).resolve()
         home = tmp / "home"
         tdir = tmp / "tmp"
         home.mkdir()
@@ -166,11 +166,17 @@ class WebsiteGateTests(unittest.TestCase):
             self.assertNotRegex(generated, r'\(allow\s+file-read\*[^\n)]*\(subpath\s+"/"\)')
             self.assertNotRegex(generated, r'(?m)^\s*\(subpath\s+"/"\)\s*$')
             self.assertNotIn('(subpath "/opt/homebrew")', generated)
+            self.assertNotIn("/opt/homebrew/etc", generated)
             self.assertIn("Cellar", generated)
             self.assertIn("/usr/lib", generated)
+            kegs = node_link_kegs(str(Path(shutil.which("node") or "/opt/homebrew/bin/node").resolve()))
+            for keg in kegs:
+                self.assertIn("/Cellar/", keg.replace("\\", "/"), keg)
+                self.assertNotIn("/opt/homebrew/etc", keg)
+                self.assertIn(keg, generated)
             prof = tmp / "p.sb"
             prof.write_text(generated, encoding="utf-8")
-            env = {**os.environ, "HOME": str(home), "TMPDIR": str(tdir)}
+            env = {**os.environ, **gate_env(home, tmp / "cache")}
             secret_paths = [
                 ("/etc/hosts", "hosts"),
                 ("/private/etc/passwd", "passwd"),
