@@ -21,4 +21,11 @@
 
 9. **Reviewer notes must enumerate the checks** (`system/loops/company-research/reviewer.md`, `index.mjs`): Luna approved with notes "All five exit-gate checks pass." — no `1.`–`5.` lines. Make the required output explicit: the `notes` string inside the JSON must contain five lines, each starting with `1.` … `5.`, stating pass/fail and a one-sentence reason (quote the offending item on fail). Add a loop-specific verdict post-check in `index.mjs` (used by the runner via a `validateVerdict` hook): if the notes lack any of `1.`–`5.`, coerce to `revise` with `FORMAT: reviewer notes must enumerate checks 1–5` (test with the real reply text captured in PROGRESS.md as a fixture).
 
+## P7 round 2 — Codex `REVIEWED: P7 issues #r2` on P10.3 (`b056cf9`), commits `P7-fix: …`
+
+10. **Load results on the live transition** (`dashboard/web/src/customer/main.js:52`): when an SSE patch moves the engagement to `awaiting_approval`, call `loadResults()` (research + preview-manifest + engagement) before rendering the results route — same path as direct navigation. jsdom test with a fake EventSource: patch → results rendered with fetched content, not defaults.
+11. **Reset progress after request-changes** (`main.js:195`): on `request_changes` accepted, clear the previous website run's step events from the loading store so the checklist returns to step 4 ("rebuilding with your notes") and advances only on the new run's events (filter events by the new `loop_runs.id` / by `created_at` after the approval). Test: after request-changes, step 5 is not marked done until the new website `gate.checked` all-pass arrives.
+12. **Treat only 2xx as success** (`main.js:190`): approve/request-changes must branch on the response status — 2xx → success state; 400/409 → their specific copy; 403/5xx/network error → an error state ("couldn't submit — try again") with the buttons re-enabled and **no** navigation. Test each branch with a fetch stub.
+13. **Concurrent double-submit test** (`dashboard/server/server.test.mjs:470`): fire two `POST …/approve` requests concurrently (`Promise.all`) against the same `awaiting_approval` engagement; assert exactly one 200 and one 409 and exactly one `approvals` row — proving `BEGIN IMMEDIATE` serialises them. Same for approve + request-changes racing.
+
 Finish with `DONE fix3 <hash…>` — only hashes in `git log`.
