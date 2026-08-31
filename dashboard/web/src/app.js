@@ -1,5 +1,5 @@
 import { statusOf, tokens } from "./status.js";
-import { clockTime, isRecent, rel } from "./time.js";
+import { clockTime, isRecent, rel, serverNow } from "./time.js";
 
 const ROW_H = `${tokens.space.tableRowHeight}px`;
 const FLASH = tokens.color.liveFlash;
@@ -115,7 +115,7 @@ function activeEngagements(snap) {
   ).size;
 }
 
-export function connLabel(sse) {
+export function connLabel(sse, now) {
   if (sse.state === "live") {
     return { label: "live", sub: "SSE /api/events", fg: tokens.color.status.passed.fg, dot: tokens.color.status.passed.fg, anim: "lgPulse 1.6s ease-in-out infinite" };
   }
@@ -130,7 +130,7 @@ export function connLabel(sse) {
   }
   return {
     label: "disconnected",
-    sub: sse.closedAt ? rel(sse.closedAt) : "—",
+    sub: sse.closedAt ? rel(sse.closedAt, now) : "—",
     fg: tokens.color.status.failed.fg,
     dot: tokens.color.status.failed.fg,
     anim: "none",
@@ -234,7 +234,7 @@ function syncRunsTable(table, store, now, go) {
 function patchRunsShell(shell, table, { store, hash, now, go }, route) {
   const snap = store.snapshot;
   const sse = store.sse;
-  const conn = connLabel(sse);
+  const conn = connLabel(sse, now);
   const nNeeds = needsCount(snap);
   const nEng = snap?.engagements?.length ?? 0;
   const nActive = activeEngagements(snap);
@@ -536,7 +536,7 @@ function renderFailures(store, now, go) {
   return [list];
 }
 
-function renderCustomers(store) {
+function renderCustomers(store, now) {
   const snap = store.snapshot;
   if (!snap) return loadingBlock();
   const engs = orderedEngagements(store);
@@ -565,7 +565,7 @@ function renderCustomers(store) {
           { class: "kb-row", "data-kb-file": f.path },
           el("span", { class: "faint" }, "▤"),
           el("span", {}, f.path),
-          el("span", { class: "faint mono" }, rel(f.updated)),
+          el("span", { class: "faint mono" }, rel(f.updated, now)),
         ),
       );
     }
@@ -579,7 +579,8 @@ function renderCustomers(store) {
   return [grid];
 }
 
-export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { window.location.hash = h; } }) {
+export function renderApp(root, { store, hash, now, go = (h) => { window.location.hash = h; } }) {
+  if (now == null) now = serverNow(store.snapshot);
   const route = parseHash(hash);
   const existing = root.querySelector(":scope > .shell");
   if (existing && existing.getAttribute("data-view") === route.view && route.view === "runs") {
@@ -592,7 +593,7 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
   root.replaceChildren();
   const snap = store.snapshot;
   const sse = store.sse;
-  const conn = connLabel(sse);
+  const conn = connLabel(sse, now);
   const nNeeds = needsCount(snap);
   const active = (snap?.engagements || []).filter((e) => ["running", "needs_human", "new", "awaiting_approval"].includes(e.status)).length;
 
@@ -685,7 +686,7 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
   if (route.view === "runs") body = renderRuns(store, now, go);
   else if (route.view === "loop") body = renderLoop(store, route, now, go);
   else if (route.view === "failures") body = renderFailures(store, now, go);
-  else body = renderCustomers(store);
+  else body = renderCustomers(store, now);
   for (const n of body) content.append(n);
   main.append(content);
   shell.append(side, main);

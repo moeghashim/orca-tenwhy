@@ -1,3 +1,5 @@
+import { isoFromMs, serverNow } from "./time.js";
+
 export function connectSse({
   url = "/api/events",
   store,
@@ -34,7 +36,7 @@ export function connectSse({
         /* */
       }
       n += 1;
-      const closedAt = new Date().toISOString();
+      const closedAt = isoFromMs(serverNow(store.snapshot));
       if (n > maxRetry) {
         store.setSse({ state: "disconnected", retry: n, retryIn: 0, closedAt });
         return;
@@ -61,7 +63,7 @@ export function connectSse({
       } catch {
         /* */
       }
-      store.setSse({ state: "disconnected", closedAt: new Date().toISOString() });
+      store.setSse({ state: "disconnected", closedAt: isoFromMs(serverNow(store.snapshot)) });
     },
   };
 }

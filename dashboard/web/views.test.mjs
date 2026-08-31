@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { renderApp } from "./src/app.js";
 import { createStore } from "./src/store.js";
 import { statusOf } from "./src/status.js";
+import { resetClock } from "./src/time.js";
 
 function fixtureSnapshot() {
   return {
@@ -188,6 +189,39 @@ test("iteration header separates label, verdict badge, and relative time with an
   assert.ok(kids[2].classList.contains("it-when"));
   const css = fs.readFileSync(new URL("./src/style.css", import.meta.url), "utf8");
   assert.match(css, /\.it-top\s*\{[^}]*gap:\s*8px/s);
+});
+
+test("relative timestamps ignore a skewed client clock and render em-dash without server time", () => {
+  const origNow = Date.now;
+  Date.now = () => Date.parse("2026-08-30T23:00:00Z");
+  try {
+    resetClock();
+    const snap = fixtureSnapshot();
+    const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/" });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    const store = createStore(snap);
+    const root = document.getElementById("app");
+    renderApp(root, { store, hash: "#/runs", go() {} });
+    const cobalt = root.querySelector("[data-run-row='eng_0141']");
+    assert.match(cobalt.textContent, /38s ago/);
+    assert.doesNotMatch(cobalt.textContent, /1h ago/);
+    const last = cobalt.querySelector("[data-last-event]");
+    assert.match(last.style.color, /37,\s*99,\s*235|#2563eb/i);
+
+    resetClock();
+    const unknown = {
+      ...snap,
+      serverTime: null,
+      snapshotAt: null,
+    };
+    const store2 = createStore(unknown);
+    renderApp(root, { store: store2, hash: "#/runs", go() {} });
+    assert.equal(root.querySelector("[data-last-event]").textContent, "—");
+  } finally {
+    Date.now = origNow;
+    resetClock();
+  }
 });
 
 test("Runs header summary lists engagement and active counts", () => {

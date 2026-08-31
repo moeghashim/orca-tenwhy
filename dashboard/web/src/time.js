@@ -1,3 +1,36 @@
+let origin = null;
+
+function monoNow() {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return 0;
+}
+
+export function resetClock() {
+  origin = null;
+}
+
+export function captureServerTime(iso) {
+  if (!iso) return false;
+  const serverMs = Date.parse(iso);
+  if (Number.isNaN(serverMs)) return false;
+  origin = { serverMs, mono: monoNow() };
+  return true;
+}
+
+export function serverNow(snap) {
+  const iso = snap?.serverTime ?? snap?.created_at;
+  if (!origin && iso) captureServerTime(iso);
+  if (!origin) return null;
+  return origin.serverMs + (monoNow() - origin.mono);
+}
+
+export function isoFromMs(ms) {
+  if (ms == null || Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
 export function clockTime(iso) {
   if (!iso) return "—";
   const ms = Date.parse(iso);
@@ -9,8 +42,8 @@ export function clockTime(iso) {
   return `${hh}:${mm}:${ss}`;
 }
 
-export function rel(iso, now = Date.now()) {
-  if (!iso) return "—";
+export function rel(iso, now) {
+  if (now == null || !iso) return "—";
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return "—";
   const sec = Math.max(0, (now - ms) / 1000);
@@ -21,8 +54,8 @@ export function rel(iso, now = Date.now()) {
   return `${Math.floor(sec / 86400)}d ago`;
 }
 
-export function isRecent(iso, now = Date.now(), windowMs = 2 * 60 * 1000) {
-  if (!iso) return false;
+export function isRecent(iso, now, windowMs = 2 * 60 * 1000) {
+  if (now == null || !iso) return false;
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return false;
   return now - ms >= 0 && now - ms < windowMs;
