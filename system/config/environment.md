@@ -94,3 +94,8 @@ Risk note: Pi and Codex CLI each hold their own ChatGPT OAuth grant (`~/.pi/agen
 
 - Stripe agent skills installed at Moe's request: `npx skills add https://docs.stripe.com -y` → `.agents/skills/{stripe-projects,stripe-docs,stripe-directory,stripe-best-practices,stripe-apps,upgrade-stripe,connect-*}` with per-agent symlink dirs (`.claude/`, `.grok/`, `.pi/`, `skills/`, …) and `skills-lock.json`.
 - Design files moved from `ClaudeCodeDesign/` to `dashboard/design/` (SOP §3.1).
+
+## Addendum (2026-08-30) — build sandbox for the website gate
+
+`/usr/bin/sandbox-exec` (macOS, present). Verified deny-list profile shape: `(allow default)` + `(deny file-write*)` with `(allow file-write* (subpath "<temp>") …)` + `(deny file-read* (subpath "/Users/moeghashim"))` + `(deny network*)`; a loopback-only variant adds `(allow network* (local ip "localhost:*"))` `(allow network* (remote ip "localhost:*"))`. Tested: write inside temp → ok; write `/tmp/x` → `Operation not permitted`; `head ~/.gitconfig` → denied; Node `readFileSync(~/.gitconfig)` → `EPERM`; `curl https://example.com` → exit 6 (no network); loopback variant → `127.0.0.1` 200, external 000; `node -e` runs (v24.15.0). The sandboxed process must `cd` into the temp tree first (cwd under `$HOME` triggers a harmless `getcwd` warning). Used by P5-fix item 2e.
+
