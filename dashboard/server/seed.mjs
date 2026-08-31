@@ -230,6 +230,16 @@ export function seedDemo({ dbPath, repoRoot = ROOT, now = utcNow() } = {}) {
     enhancement_ideas: [],
   };
   fs.writeFileSync(path.join(harborDir, "research/RESEARCH.json"), `${JSON.stringify(research, null, 2)}\n`);
+  const harborDist = path.join(harborDir, "website/dist");
+  fs.mkdirSync(path.join(harborDist, "images"), { recursive: true });
+  fs.writeFileSync(
+    path.join(harborDist, "index.html"),
+    `<!DOCTYPE html><html><head><title>Harbor & Finch</title></head><body><h1>Harbor & Finch</h1><p>Neighborhood cafe</p></body></html>\n`,
+  );
+  fs.writeFileSync(
+    path.join(harborDist, "contact.html"),
+    `<!DOCTYPE html><html><head><title>Contact</title></head><body><h1>Contact</h1></body></html>\n`,
+  );
   writeMd(path.join(harborDir, "company/OVERVIEW.md"), "Overview", "Harbor & Finch neighborhood cafe.", now);
   writeMd(path.join(harborDir, "company/POSITIONING.md"), "Positioning", "Calm weekday lunches.", now);
   writeMd(path.join(harborDir, "BRIEF.md"), "Brief", "Seeded engagement.", now);

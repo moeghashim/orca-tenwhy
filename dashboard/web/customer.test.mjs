@@ -64,3 +64,47 @@ test("start and loading markup include mascot and five steps", () => {
   assert.equal(root.querySelector("[data-step='3']").classList.contains("active"), true);
   assert.match(root.textContent, /you can keep this page open/);
 });
+
+test("results tabs render research, website preview, and both action controls", () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  const research = {
+    company: { summary: "Neighborhood cafe" },
+    competitors: [{ name: "Nord Kaffe", url: "https://nordkaffe.example/menu", summary: "Filter coffee rival", products: [{ name: "Filter", price: 4.5 }] }],
+    enhancement_ideas: [{ idea: "Calm weekday lunches", rationale: "observed" }],
+  };
+  const comparison = {
+    columns: [{ label: "customer product" }, { label: "competitor" }],
+    rows: [{ cells: [{ value: "Drip coffee", state: "valid" }, { value: "Nord", state: "flagged" }] }],
+  };
+  renderCustomerApp(root, {
+    hash: "#/e/eng_0143/results",
+    engagement: { id: "eng_0143", status: "awaiting_approval" },
+    research,
+    comparison,
+    pages: [{ path: "/index.html", title: "Harbor & Finch" }, { path: "/contact.html", title: "Contact" }],
+    tab: "research",
+  });
+  assert.match(root.textContent, /Neighborhood cafe/);
+  assert.match(root.textContent, /Nord Kaffe/);
+  assert.ok(root.querySelector("[data-approve]"));
+  assert.ok(root.querySelector("[data-request]"));
+  assert.equal(root.querySelector("[data-approve]").textContent, "Approve & launch");
+  renderCustomerApp(root, {
+    hash: "#/e/eng_0143/results",
+    engagement: { id: "eng_0143", status: "awaiting_approval" },
+    research,
+    comparison,
+    pages: [{ path: "/index.html", title: "Harbor & Finch" }],
+    tab: "design",
+  });
+  const iframe = root.querySelector("iframe");
+  assert.ok(iframe);
+  assert.equal(iframe.getAttribute("sandbox"), "allow-scripts");
+  assert.equal(iframe.getAttribute("src"), "/preview/eng_0143/");
+  assert.match(root.textContent, /Harbor & Finch/);
+  assert.ok(root.querySelector("[data-approve]"));
+  assert.ok(root.querySelector("[data-request]"));
+});

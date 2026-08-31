@@ -1,3 +1,4 @@
+import { renderComparison } from "../app.js";
 import { loadingProgress, PHASES, STEP_LABELS } from "./progress.js";
 
 function el(tag, attrs = {}, ...kids) {
@@ -116,9 +117,156 @@ export function renderLoading({ events = [], loop_runs = [], engagement = null }
   );
 }
 
-export function renderCustomerApp(root, { hash, engagement = null, events = [], loop_runs = [], onCreate } = {}) {
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return String(url || "").replace(/^https?:\/\//, "");
+  }
+}
+
+function pricingShown(comp) {
+  const products = comp.products || [];
+  const priced = products.filter((p) => typeof p.price === "number");
+  if (priced.length) return String(priced[0].price);
+  return "hidden";
+}
+
+export function renderResults({
+  engagement,
+  research,
+  comparison,
+  pages = [],
+  tab = "research",
+  onTab,
+  onApprove,
+  onRequest,
+  busy = false,
+  error = "",
+  liveUrl = null,
+  launching = false,
+  showNotes = false,
+} = {}) {
+  const isRes = tab !== "design";
+  const title = isRes ? "Your research is ready" : "Your website draft";
+  const sub = isRes
+    ? "Everything below was gathered and verified by tenwhy."
+    : "Drafted, reviewed, and checked — nothing goes live until you approve.";
+  const company = research?.company || {};
+  const competitors = research?.competitors || [];
+  const ideas = research?.enhancement_ideas || [];
+  const learned = competitors.map((c) => c.summary).filter(Boolean);
+  const body = [];
+  if (isRes) {
+    const about = el("div", { class: "r-card", "data-card": "about" }, el("div", { class: "r-h" }, "About your business"), el("div", { class: "r-body" }, company.summary || ""));
+    const learn = el("div", { class: "r-card" }, el("div", { class: "r-h" }, "What we learned"), el("div", { class: "r-list", "data-card": "learned" }, ...learned.map((s) => el("span", {}, `✓ ${s}`))));
+    const win = el(
+      "div",
+      { class: "r-card" },
+      el("div", { class: "r-h" }, "How your site will win"),
+      el("div", { class: "r-list", "data-card": "win" }, ...ideas.map((it, i) => el("span", {}, `${i + 1}. ${it.idea}`))),
+    );
+    const table = el("div", { class: "comp-table", "data-card": "competitors" });
+    for (const h of ["competitor", "pricing shown", "what they do well", "website"]) table.append(el("span", { class: "h" }, h));
+    for (const c of competitors) {
+      const href = c.url || "";
+      table.append(
+        href ? el("a", { href, class: "mono" }, `${c.name} ↗`) : el("span", { style: { fontWeight: "500" } }, c.name || ""),
+        el("span", {}, pricingShown(c)),
+        el("span", {}, c.summary || ""),
+        el("span", {}, hostOf(href)),
+      );
+    }
+    const wrap = el("div", { class: "research", "data-tab": "research" }, about, el("div", { class: "r-grid" }, learn, win), el("div", { class: "r-card" }, el("div", { class: "r-h" }, "Your competitors"), table));
+    if (comparison) wrap.append(renderComparison(comparison));
+    body.push(wrap);
+  } else {
+    const id = engagement?.id || "";
+    const checklist = el("div", { class: "r-list", "data-pages": "1" }, ...pages.map((p) => el("span", {}, `✓ ${p.title || p.path}`)));
+    body.push(
+      el(
+        "div",
+        { class: "design", "data-tab": "design" },
+        el(
+          "div",
+          { class: "browser" },
+          el(
+            "div",
+            { class: "chrome" },
+            el("span", { class: "dot" }),
+            el("span", { class: "dot" }),
+            el("span", { class: "dot" }),
+            el("span", { class: "addr" }, `${id} — draft`),
+          ),
+          el("iframe", { sandbox: "allow-scripts", src: `/preview/${id}/`, title: "preview" }),
+        ),
+        el(
+          "div",
+          { class: "side" },
+          el("div", { class: "r-card" }, el("div", { class: "r-h" }, `Your ${pages.length} pages`), checklist),
+          el("div", { class: "r-card" }, el("div", { class: "r-h" }, "Built from your research"), el("div", { class: "r-body" }, "built from your research — nothing invented")),
+        ),
+      ),
+    );
+  }
+  const approveLabel = launching ? "launching…" : liveUrl ? "live" : "Approve & launch";
+  const actions = el("div", { class: "actions" });
+  if (liveUrl) {
+    actions.append(el("a", { class: "btn btn-dark", href: liveUrl, "data-live-url": "1" }, liveUrl));
+  } else {
+    actions.append(
+      el("button", { class: "btn btn-dark", type: "button", "data-approve": "1", disabled: busy || launching, onClick: () => onApprove && onApprove() }, approveLabel),
+      el("button", { class: "btn btn-light", type: "button", "data-request": "1", disabled: busy, onClick: () => onRequest && onRequest() }, "Request changes"),
+    );
+  }
+  return el(
+    "div",
+    { class: "stage", "data-screen": "results" },
+    el("div", { class: "results" },
+      mascot("xs"),
+      el("div", { class: "result-title" }, title),
+      el("div", { class: "result-sub" }, sub),
+      el(
+        "div",
+        { class: "pills" },
+        el("button", { class: "pill" + (isRes ? " on" : ""), type: "button", "data-tab-btn": "research", onClick: () => onTab && onTab("research") }, "Research"),
+        el("button", { class: "pill" + (!isRes ? " on" : ""), type: "button", "data-tab-btn": "design", onClick: () => onTab && onTab("design") }, "Website design"),
+      ),
+      ...body,
+      showNotes
+        ? el("div", { class: "notes" }, el("textarea", { "data-notes": "1", placeholder: "What should we change?" }))
+        : null,
+      actions,
+      error ? el("div", { class: "err", "data-error": "1" }, error) : null,
+    ),
+  );
+}
+
+export function renderCustomerApp(root, {
+  hash,
+  engagement = null,
+  events = [],
+  loop_runs = [],
+  research = null,
+  comparison = null,
+  pages = [],
+  tab = "research",
+  onCreate,
+  onTab,
+  onApprove,
+  onRequest,
+  busy = false,
+  error = "",
+  liveUrl = null,
+  launching = false,
+  showNotes = false,
+} = {}) {
   const route = parseCustomerHash(hash);
   root.replaceChildren();
+  if (route.view === "results") {
+    root.append(renderResults({ engagement, research, comparison, pages, tab, onTab, onApprove, onRequest, busy, error, liveUrl, launching, showNotes }));
+    return root;
+  }
   if (route.view === "loading" || (route.view === "start" && engagement)) {
     root.append(renderLoading({ events, loop_runs, engagement }));
     return root;

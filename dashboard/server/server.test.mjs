@@ -346,3 +346,36 @@ test("GET /api/engagements/:id returns the engagement subset", async (t) => {
   const missing = await getJson(port, "/api/engagements/nope");
   assert.equal(missing.status, 404);
 });
+
+test("seeded awaiting_approval engagement serves research and preview HTML", async (t) => {
+  const dir = tmpDir();
+  const dbPath = path.join(dir, "t.db");
+  seedDemo({ dbPath, repoRoot: dir });
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: dir });
+  t.after(() => {
+    close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const research = await getJson(port, "/api/engagements/eng_0143/research");
+  assert.equal(research.status, 200);
+  assert.ok(research.json.research);
+  assert.ok(research.json.comparison);
+  assert.ok(research.json.comparison.columns);
+  const manifest = await getJson(port, "/api/engagements/eng_0143/preview-manifest");
+  assert.equal(manifest.status, 200);
+  assert.ok(manifest.json.pages.some((p) => p.path.includes("index.html")));
+  const html = await new Promise((resolve, reject) => {
+    http.get(`http://127.0.0.1:${port}/preview/eng_0143/`, (res) => {
+      let body = "";
+      res.on("data", (c) => {
+        body += c;
+      });
+      res.on("end", () => resolve({ status: res.statusCode, body, headers: res.headers }));
+    }).on("error", reject);
+  });
+  assert.equal(html.status, 200);
+  assert.match(html.body, /Harbor/);
+  assert.match(String(html.headers["content-security-policy"] || ""), /sandbox/);
+  assert.equal(html.headers["x-frame-options"], "SAMEORIGIN");
+});

@@ -3,7 +3,13 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { engagementBundle, spawnLoopctlNew } from "./customer_api.mjs";
+import {
+  engagementBundle,
+  previewDist,
+  previewManifest,
+  researchPayload,
+  spawnLoopctlNew,
+} from "./customer_api.mjs";
 import { buildSnapshot, entitiesForEvent, formatSsePatch } from "./snapshot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -133,6 +139,61 @@ export function createDashboardServer({
         return;
       }
       sendJson(res, 200, bundle);
+      return;
+    }
+    const researchGet = req.method === "GET" && url.pathname.match(/^\/api\/engagements\/([^/]+)\/research$/);
+    if (researchGet) {
+      const id = decodeURIComponent(researchGet[1]);
+      const payload = researchPayload(db, id, repoRoot);
+      if (!payload) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+      }
+      sendJson(res, 200, payload);
+      return;
+    }
+    const manifestGet = req.method === "GET" && url.pathname.match(/^\/api\/engagements\/([^/]+)\/preview-manifest$/);
+    if (manifestGet) {
+      const id = decodeURIComponent(manifestGet[1]);
+      const dist = previewDist(db, id, repoRoot);
+      if (!dist) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+      }
+      sendJson(res, 200, previewManifest(dist));
+      return;
+    }
+    const previewGet = req.method === "GET" && url.pathname.match(/^\/preview\/([^/]+)(?:\/(.*))?$/);
+    if (previewGet) {
+      const id = decodeURIComponent(previewGet[1]);
+      const rest = decodeURIComponent(previewGet[2] || "");
+      const dist = previewDist(db, id, repoRoot);
+      if (!dist) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+      }
+      const distReal = path.resolve(dist);
+      let rel = rest.replace(/^\/+/, "") || "index.html";
+      const abs = path.normalize(path.join(distReal, rel));
+      if (!abs.startsWith(distReal)) {
+        res.writeHead(403).end();
+        return;
+      }
+      let file = abs;
+      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+        file = path.join(abs, "index.html");
+      }
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+      }
+      const ext = path.extname(file);
+      res.writeHead(200, {
+        "content-type": MIME[ext] || "application/octet-stream",
+        "x-frame-options": "SAMEORIGIN",
+        "content-security-policy": "sandbox allow-scripts",
+      });
+      fs.createReadStream(file).pipe(res);
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/events") {
