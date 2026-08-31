@@ -379,7 +379,13 @@ export async function runLoop({
         now: utcNow(),
       });
     } catch (err) {
-      logError("loop", "prepare end", { run: loopRunId, session: prepSessionId, err: String(err?.message || err).slice(0, 200) });
+      logError("loop", "prepare end", {
+        run: loopRunId,
+        session: prepSessionId,
+        stderr: preview(err?.stderr || err?.message, 200),
+        exit: err?.exitCode,
+        tools: err?.toolCalls ?? 0,
+      });
       return failRunOnError(db, {
         engagementId,
         loopRunId,
@@ -390,7 +396,14 @@ export async function runLoop({
         traceRef: err?.traceRef ?? lastExecutorTrace,
       });
     }
-    info("loop", "prepare end", { run: loopRunId, session: prepSessionId, ms: Date.now() - prepStarted, ok: prep?.ok ? 1 : 0 });
+    const prepMs = Date.now() - prepStarted;
+    info("loop", "prepare end", {
+      run: loopRunId,
+      session: prepSessionId,
+      exit: prep?.exitCode ?? 0,
+      ms: prepMs,
+      tools: prep?.toolCalls ?? 0,
+    });
     if (!prep?.ok) {
       const detail = prep?.error || "prepare failed";
       const traceRef = prep?.traceRef ?? null;
@@ -424,7 +437,13 @@ export async function runLoop({
       engagementId,
       loopRunId,
       kind: "loop_run.prepared",
-      payload: { traceRef: prep.traceRef ?? null },
+      payload: {
+        traceRef: prep.traceRef ?? null,
+        session: prepSessionId,
+        exit: prep.exitCode ?? 0,
+        ms: prepMs,
+        tools: prep.toolCalls ?? 0,
+      },
     });
   }
 

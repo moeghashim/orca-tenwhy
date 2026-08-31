@@ -74,6 +74,21 @@ function kinds(db, loopRunId) {
     .map((r) => r.kind);
 }
 
+function captureStdout(fn) {
+  const chunks = [];
+  const orig = process.stdout.write;
+  process.stdout.write = (chunk, encoding, cb) => {
+    chunks.push(String(chunk));
+    return orig.call(process.stdout, chunk, encoding, cb);
+  };
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => {
+      process.stdout.write = orig;
+    })
+    .then((result) => ({ result, text: chunks.join("") }));
+}
+
 async function run(t, adapter, gateRunner) {
   const ctx = setup();
   t.after(() => {
@@ -492,17 +507,19 @@ test("K: website prepare success emits loop_run.prepared then iterations", async
       return inner.run(args);
     },
   };
-  const result = await runLoop({
-    db: ctx.db,
-    dbPath: ctx.dbPath,
-    loopName: "website",
-    engagementId: ctx.engagementId,
-    attempt: 0,
-    workdir: ctx.workdir,
-    config: CONFIG,
-    adapter: capturing,
-    gateRunner: async () => [{ check_name: "ok", passed: 1, detail: "" }],
-  });
+  const { result, text } = await captureStdout(() =>
+    runLoop({
+      db: ctx.db,
+      dbPath: ctx.dbPath,
+      loopName: "website",
+      engagementId: ctx.engagementId,
+      attempt: 0,
+      workdir: ctx.workdir,
+      config: CONFIG,
+      adapter: capturing,
+      gateRunner: async () => [{ check_name: "ok", passed: 1, detail: "" }],
+    }),
+  );
   assert.equal(result.status, "gate_passed");
   assert.deepEqual(seen, ["reviewer", "executor", "reviewer"]);
   assert.equal(fs.existsSync(path.join(ctx.workdir, "brand/tokens.json")), true);
@@ -513,6 +530,20 @@ test("K: website prepare success emits loop_run.prepared then iterations", async
     "gate.checked",
     "loop_run.finished",
   ]);
+  const prepEnd = text.split("\n").find((line) => /\binfo loop prepare end\b/.test(line));
+  assert.ok(prepEnd, `missing prepare end log: ${text}`);
+  assert.match(prepEnd, /\bsession=[0-9a-f-]{36}\b/i);
+  assert.match(prepEnd, /\bexit=0\b/);
+  assert.match(prepEnd, /\bms=\d+/);
+  assert.match(prepEnd, /\btools=0\b/);
+  const prepared = ctx.db
+    .prepare("SELECT payload FROM events WHERE loop_run_id = ? AND kind = 'loop_run.prepared'")
+    .get(result.loopRunId);
+  const payload = JSON.parse(prepared.payload);
+  assert.match(String(payload.session), /^[0-9a-f-]{36}$/i);
+  assert.equal(payload.exit, 0);
+  assert.equal(typeof payload.ms, "number");
+  assert.equal(payload.tools, 0);
 });
 
 test("L: website prepare failure records design_spec and gate_failed", async (t) => {

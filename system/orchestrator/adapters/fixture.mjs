@@ -45,6 +45,8 @@ export function createFixtureAdapter(script) {
         text,
         outputPath,
         traceRef: `fixture://${role}/${n}`,
+        exitCode: 0,
+        toolCalls: 0,
       };
     },
   };

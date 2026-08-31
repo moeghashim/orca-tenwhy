@@ -256,9 +256,21 @@ export async function prepare({
     now,
   });
   if (!mat.ok) {
-    return { ok: false, error: mat.error, traceRef: result.traceRef };
+    return {
+      ok: false,
+      error: mat.error,
+      traceRef: result.traceRef,
+      exitCode: result.exitCode ?? 0,
+      toolCalls: result.toolCalls ?? 0,
+    };
   }
-  return { ok: true, traceRef: result.traceRef, files: mat.files };
+  return {
+    ok: true,
+    traceRef: result.traceRef,
+    files: mat.files,
+    exitCode: result.exitCode ?? 0,
+    toolCalls: result.toolCalls ?? 0,
+  };
 }
 
 export { materializeDesign };

@@ -14,9 +14,7 @@ function captureStdout(fn) {
   const orig = process.stdout.write;
   process.stdout.write = (chunk, encoding, cb) => {
     chunks.push(String(chunk));
-    if (typeof encoding === "function") encoding();
-    if (typeof cb === "function") cb();
-    return true;
+    return orig.call(process.stdout, chunk, encoding, cb);
   };
   return Promise.resolve()
     .then(fn)
