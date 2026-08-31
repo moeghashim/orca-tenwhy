@@ -106,7 +106,7 @@ P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-
 
 | ID | Status | Verify command → pasted output | Commit | Review |
 |---|---|---|---|---|
-| P10.1 | ⬜ | | | |
+| P10.1 | 🟡 | `node --test "dashboard/server/*.test.mjs" dashboard/web/customer.test.mjs` → `✔ POST /api/engagements matches loopctl new row fields and customer-repo tree` · `✔ GET /api/engagements/:id returns the engagement subset` · `✔ loading steps advance in order when fixture events 1–5 are applied, and never regress` · `✔ start and loading markup include mascot and five steps` `tests 8` `pass 8` `fail 0` `exit=0`. | | `_pending_` |
 | P10.2 | ⬜ | | | |
 | P10.3 | ⬜ | | | |
 

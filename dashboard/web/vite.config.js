@@ -10,6 +10,12 @@ export default defineConfig({
   build: {
     outDir: path.join(dir, "dist"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.join(dir, "index.html"),
+        customer: path.join(dir, "customer.html"),
+      },
+    },
   },
   server: {
     proxy: { "/api": "http://127.0.0.1:4310" },

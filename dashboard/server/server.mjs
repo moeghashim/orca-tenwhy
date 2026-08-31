@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { engagementBundle, spawnLoopctlNew } from "./customer_api.mjs";
 import { buildSnapshot, entitiesForEvent, formatSsePatch } from "./snapshot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -21,6 +22,19 @@ const MIME = {
 
 export function openReadOnly(dbPath) {
   return new DatabaseSync(dbPath, { readOnly: true });
+}
+
+export function openWritable(dbPath) {
+  return new DatabaseSync(dbPath);
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 function sendJson(res, status, body) {
@@ -74,19 +88,67 @@ export function createDashboardServer({
       sendJson(res, 200, snapshot());
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/engagements") {
+      Promise.resolve()
+        .then(async () => {
+          let body;
+          try {
+            body = JSON.parse((await readBody(req)) || "{}");
+          } catch {
+            sendJson(res, 400, { error: "invalid json" });
+            return;
+          }
+          const idea = typeof body.idea === "string" ? body.idea.trim() : "";
+          const site_url = typeof body.site_url === "string" ? body.site_url.trim() : "";
+          const customer_name = typeof body.customer_name === "string" ? body.customer_name.trim() : "";
+          if (!idea && !site_url) {
+            sendJson(res, 400, { error: "idea or site_url required" });
+            return;
+          }
+          const result = await spawnLoopctlNew({
+            idea: idea || undefined,
+            site_url: site_url || undefined,
+            customer_name: customer_name || undefined,
+            dbPath,
+            repoRoot,
+            env: process.env,
+          });
+          if (!result.ok) {
+            sendJson(res, 502, { error: result.error });
+            return;
+          }
+          sendJson(res, 201, { id: result.id });
+        })
+        .catch((err) => {
+          sendJson(res, 502, { error: String(err.message || err) });
+        });
+      return;
+    }
+    const engGet = req.method === "GET" && url.pathname.match(/^\/api\/engagements\/([^/]+)$/);
+    if (engGet) {
+      const id = decodeURIComponent(engGet[1]);
+      const bundle = engagementBundle(db, id, repoRoot);
+      if (!bundle) {
+        sendJson(res, 404, { error: "not found" });
+        return;
+      }
+      sendJson(res, 200, bundle);
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/events") {
       // since= is a bootstrap hint only. When Last-Event-ID is also present, use the
       // larger id so we never replay events the client has already applied.
       const headerId = Number(req.headers["last-event-id"] ?? 0) || 0;
       const queryId = Number(url.searchParams.get("since") ?? 0) || 0;
       let lastId = Math.max(headerId, queryId);
+      const engagementId = url.searchParams.get("engagement") || null;
       res.writeHead(200, {
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache, no-transform",
         connection: "keep-alive",
       });
       res.write("\n");
-      const client = { res, lastId };
+      const client = { res, lastId, engagementId };
       clients.add(client);
       const heartbeat = setInterval(() => {
         try {
@@ -97,9 +159,11 @@ export function createDashboardServer({
       }, heartbeatMs);
       const poll = setInterval(() => {
         try {
-          const rows = db
-            .prepare("SELECT * FROM events WHERE id > ? ORDER BY id")
-            .all(client.lastId);
+          const rows = client.engagementId
+            ? db
+                .prepare("SELECT * FROM events WHERE id > ? AND engagement_id = ? ORDER BY id")
+                .all(client.lastId, client.engagementId)
+            : db.prepare("SELECT * FROM events WHERE id > ? ORDER BY id").all(client.lastId);
           for (const row of rows) {
             const entities = entitiesForEvent(db, row, repoRoot);
             const data = formatSsePatch(row, entities);

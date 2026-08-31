@@ -22,6 +22,72 @@ function listen(server) {
   });
 }
 
+function postJson(port, pathname, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: pathname,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(data),
+          ...headers,
+        },
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (c) => {
+          raw += c;
+        });
+        res.on("end", () => {
+          let json = null;
+          try {
+            json = raw ? JSON.parse(raw) : null;
+          } catch {
+            json = { raw };
+          }
+          resolve({ status: res.statusCode, json, headers: res.headers });
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+function maskRow(row) {
+  return {
+    customer_name: row.customer_name,
+    idea: row.idea,
+    site_url: row.site_url,
+    status: row.status,
+  };
+}
+
+function treeFiles(dir) {
+  const out = [];
+  function walk(p, rel) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(p, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === ".git") continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(path.join(p, e.name), r);
+      else out.push(r);
+    }
+  }
+  walk(dir, "");
+  return out.sort();
+}
+
 function getJson(port, pathname) {
   return new Promise((resolve, reject) => {
     http
@@ -203,4 +269,80 @@ test("Last-Event-ID 20 and since=5 delivers first event id 21", async (t) => {
     });
   });
   assert.equal(firstId, 21);
+});
+
+test("POST /api/engagements matches loopctl new row fields and customer-repo tree", async (t) => {
+  const prevBackend = process.env.TENWHY_REPO_BACKEND;
+  process.env.TENWHY_REPO_BACKEND = "local";
+  const stamp = Date.now().toString(36);
+  const name = `P10 Compare ${stamp}`;
+  const idea = "Boutique dental clinic in Amman";
+  const url = "https://example.com";
+  const dir = tmpDir();
+  const dbCli = path.join(dir, "cli.db");
+  const dbApi = path.join(dir, "api.db");
+  const mig = spawnSync("bash", [path.join(ROOT, "system/db/migrate.sh"), dbApi], { encoding: "utf8" });
+  assert.equal(mig.status, 0, mig.stderr || mig.stdout);
+  const cli = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "bin/loopctl"), "new", idea, "--url", url, "--name", name],
+    { encoding: "utf8", env: { ...process.env, TENWHY_DB: dbCli, TENWHY_REPO_BACKEND: "local" }, cwd: ROOT },
+  );
+  t.after(() => {
+    if (prevBackend === undefined) delete process.env.TENWHY_REPO_BACKEND;
+    else process.env.TENWHY_REPO_BACKEND = prevBackend;
+    for (const dbPath of [dbCli, dbApi]) {
+      if (!fs.existsSync(dbPath)) continue;
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      const rows = db.prepare("SELECT id, json_extract(payload,'$.slug') AS slug FROM events WHERE kind='engagement.created'").all();
+      db.close();
+      for (const r of rows) {
+        if (r.slug) {
+          fs.rmSync(path.join(ROOT, "state/customers", r.slug), { recursive: true, force: true });
+          fs.rmSync(path.join(ROOT, "state/remotes", `${r.slug}.git`), { recursive: true, force: true });
+        }
+      }
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  assert.equal(cli.status, 0, cli.stderr || cli.stdout);
+  const cliId = cli.stdout.trim();
+  const { server, close } = createDashboardServer({ dbPath: dbApi, repoRoot: ROOT });
+  t.after(() => close());
+  const port = await listen(server);
+  const posted = await postJson(port, "/api/engagements", { idea, site_url: url, customer_name: name });
+  assert.equal(posted.status, 201, posted.json);
+  const apiId = posted.json.id;
+  assert.match(apiId, /^eng_/);
+  const db1 = new DatabaseSync(dbCli, { readOnly: true });
+  const db2 = new DatabaseSync(dbApi, { readOnly: true });
+  const row1 = db1.prepare("SELECT * FROM engagements WHERE id = ?").get(cliId);
+  const row2 = db2.prepare("SELECT * FROM engagements WHERE id = ?").get(apiId);
+  assert.deepEqual(maskRow(row2), maskRow(row1));
+  const slug1 = db1.prepare("SELECT json_extract(payload,'$.slug') AS slug FROM events WHERE engagement_id=? AND kind='engagement.created'").get(cliId).slug;
+  const slug2 = db2.prepare("SELECT json_extract(payload,'$.slug') AS slug FROM events WHERE engagement_id=? AND kind='engagement.created'").get(apiId).slug;
+  db1.close();
+  db2.close();
+  assert.deepEqual(treeFiles(path.join(ROOT, "state/customers", slug2)), treeFiles(path.join(ROOT, "state/customers", slug1)));
+  const bad = await postJson(port, "/api/engagements", { customer_name: "x" });
+  assert.equal(bad.status, 400);
+});
+
+test("GET /api/engagements/:id returns the engagement subset", async (t) => {
+  const dir = tmpDir();
+  const dbPath = path.join(dir, "t.db");
+  seedDemo({ dbPath, repoRoot: dir });
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: dir });
+  t.after(() => {
+    close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const { status, json } = await getJson(port, "/api/engagements/eng_0143");
+  assert.equal(status, 200);
+  assert.equal(json.engagement.id, "eng_0143");
+  assert.ok(json.loop_runs.some((r) => r.id === "run_res_0143"));
+  assert.ok(json.events.some((e) => e.kind === "engagement.awaiting_approval"));
+  const missing = await getJson(port, "/api/engagements/nope");
+  assert.equal(missing.status, 404);
 });
