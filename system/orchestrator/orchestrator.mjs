@@ -196,7 +196,7 @@ async function handleRunResult(
   }
 }
 
-export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = ROOT }) {
+export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = ROOT, dbPath = null }) {
   const pending = db
     .prepare(
       `SELECT a.* FROM approvals a
@@ -233,7 +233,11 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
       try {
         const result = await deploy({
           engagementId: eng.id,
+          approvalId: approval.id,
           repoDir: customerRepoDir(eng, repoRoot, db),
+          db,
+          dbPath: dbPath || process.env.TENWHY_DB || path.join(repoRoot, "state/orchestrator.db"),
+          repoRoot,
         });
         const liveUrl = result?.liveUrl ?? result?.url ?? null;
         db.prepare("UPDATE engagements SET status = ?, updated_at = ? WHERE id = ?").run(
@@ -348,7 +352,7 @@ export async function tick({
   }
 
   if (typeof processApprovalsFn === "function") {
-    await processApprovalsFn({ db, deploy, repoRoot, config });
+    await processApprovalsFn({ db, deploy, repoRoot, config, dbPath });
   }
 }
 
