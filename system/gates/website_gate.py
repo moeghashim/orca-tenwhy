@@ -187,7 +187,43 @@ def validate_package(pkg: dict) -> str | None:
     return None
 
 
-def node_paths() -> tuple[str, str, str, str, str]:
+def node_link_kegs(node_real: str) -> list[str]:
+    """Homebrew kegs the node binary links, never the brew prefix itself."""
+    try:
+        out = subprocess.run(
+            ["/usr/bin/otool", "-L", node_real],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return []
+    seen: list[str] = []
+    for raw in (out.stdout or "").splitlines()[1:]:
+        path = raw.strip().split()[0] if raw.strip() else ""
+        if not path.startswith("/opt/homebrew/"):
+            continue
+        parts = Path(path).parts
+        if len(parts) >= 5 and parts[1:4] == ("opt", "homebrew", "opt"):
+            keg = str(Path(*parts[:5]))
+        else:
+            continue
+        if keg in seen or keg.rstrip("/") == "/opt/homebrew":
+            continue
+        seen.append(keg)
+        try:
+            resolved = str(Path(keg).resolve())
+        except OSError:
+            resolved = keg
+        if resolved not in seen and resolved.rstrip("/") != "/opt/homebrew":
+            seen.append(resolved)
+        formula = Path(keg).name
+        etc = Path("/opt/homebrew/etc") / formula
+        if etc.is_dir() and str(etc) not in seen:
+            seen.append(str(etc))
+    return seen
+
+
+def node_paths() -> tuple[str, str, str, str, list[str]]:
     node = shutil.which("node") or "/opt/homebrew/bin/node"
     try:
         real = str(Path(node).resolve())
@@ -196,12 +232,7 @@ def node_paths() -> tuple[str, str, str, str, str]:
     p = Path(real)
     prefix = str(p.parent.parent) if p.parent.name == "bin" else str(p.parent)
     lib = str(Path(prefix) / "lib")
-    brew = "/opt/homebrew"
-    for parent in p.parents:
-        if parent.name == "Cellar":
-            brew = str(parent.parent)
-            break
-    return node, real, prefix, lib, brew
+    return node, real, prefix, lib, node_link_kegs(real)
 
 
 def darwin_user_temp() -> str:
@@ -226,9 +257,11 @@ def seatbelt_profile(
     template = SANDBOX_DIR / f"{phase}.sb"
     if not template.is_file():
         raise FileNotFoundError(f"sandbox profile missing: {template}")
-    node, node_real, node_prefix, node_lib, brew_prefix = node_paths()
+    node, node_real, node_prefix, node_lib, kegs = node_paths()
     tmp = tmpdir or (Path(home) / "tmp")
     text = template.read_text(encoding="utf-8")
+    keg_lines = "\n".join(f'  (subpath "{k}")' for k in kegs)
+    text = text.replace("  (subpath \"__NODE_KEGS__\")", keg_lines or f'  (subpath "{node_prefix}")')
     repl = {
         "__TREE__": str(tree),
         "__CACHE__": str(cache),
@@ -238,7 +271,6 @@ def seatbelt_profile(
         "__NODE_REAL__": node_real,
         "__NODE_PREFIX__": node_prefix,
         "__NODE_LIB__": node_lib,
-        "__BREW_PREFIX__": brew_prefix,
         "__OPERATOR_HOME__": OPERATOR_HOME,
         "__USER_TEMP__": darwin_user_temp(),
         "__CRASHPAD__": CRASHPAD_DIR,

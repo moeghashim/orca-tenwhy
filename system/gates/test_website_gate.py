@@ -151,6 +151,7 @@ class WebsiteGateTests(unittest.TestCase):
             self.assertNotRegex(text, r'(?m)^\s*\(subpath\s+"/"\)\s*$', name)
             self.assertNotRegex(text, r"(?m)^\(allow file-read\*\)$", name)
             self.assertIn('(literal "/")', text)
+            self.assertNotIn('(subpath "/opt/homebrew")', text)
             self.assertIn("/usr/lib", text)
             self.assertIn("/usr/share", text)
             self.assertIn("/System/Library", text)
@@ -164,6 +165,8 @@ class WebsiteGateTests(unittest.TestCase):
             generated = seatbelt_profile("build", tmp, tmp / "cache", home, tmpdir=tdir)
             self.assertNotRegex(generated, r'\(allow\s+file-read\*[^\n)]*\(subpath\s+"/"\)')
             self.assertNotRegex(generated, r'(?m)^\s*\(subpath\s+"/"\)\s*$')
+            self.assertNotIn('(subpath "/opt/homebrew")', generated)
+            self.assertIn("Cellar", generated)
             self.assertIn("/usr/lib", generated)
             prof = tmp / "p.sb"
             prof.write_text(generated, encoding="utf-8")
@@ -248,7 +251,16 @@ class WebsiteGateTests(unittest.TestCase):
                     leaked = True
                 if "127.0.0.1" in body and "localhost" in body:
                     leaked = True
-        self.assertFalse(leaked, "dist leaked /etc/passwd or /etc/hosts")
+                if "[user]" in body:
+                    leaked = True
+                gitconfig = Path.home() / ".gitconfig"
+                if gitconfig.is_file():
+                    for line in gitconfig.read_text(encoding="utf-8", errors="replace").splitlines():
+                        if "email" in line.lower() and "=" in line:
+                            addr = line.split("=", 1)[1].strip().strip("\"'")
+                            if addr and addr in body:
+                                leaked = True
+        self.assertFalse(leaked, "dist leaked /etc/passwd, /etc/hosts, or ~/.gitconfig")
         if built["passed"]:
             self.fail("sandboxed absolute-import fixture built; expected denial")
         self.assertEqual(rc, 1)

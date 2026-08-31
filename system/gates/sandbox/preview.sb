@@ -13,7 +13,7 @@
   (literal "__NODE_REAL__")
   (subpath "__NODE_PREFIX__")
   (subpath "__NODE_LIB__")
-  (subpath "__BREW_PREFIX__")
+  (subpath "__NODE_KEGS__")
   (subpath "/usr/lib")
   (subpath "/usr/share")
   (subpath "/System/Library")
