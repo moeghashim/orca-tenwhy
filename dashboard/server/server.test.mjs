@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import { createDashboardServer, openReadOnly } from "./server.mjs";
 import { seedDemo } from "./seed.mjs";
 
@@ -154,4 +155,52 @@ test("insert an events row via sqlite3 while an SSE client is connected → patc
   assert.match(received.join(""), /probe\.ping/);
   assert.match(received.join(""), /"engagements"/);
   assert.match(received.join(""), /eng_0141/);
+});
+
+test("Last-Event-ID 20 and since=5 delivers first event id 21", async (t) => {
+  const dir = tmpDir();
+  const dbPath = path.join(dir, "t.db");
+  seedDemo({ dbPath, repoRoot: dir });
+  const db = new DatabaseSync(dbPath);
+  const max = db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id;
+  for (let i = max + 1; i <= 25; i++) {
+    db.prepare(
+      "INSERT INTO events (engagement_id, loop_run_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("eng_0141", "run_res_0141", "probe.pad", "{}", "2026-08-30T00:00:00Z");
+  }
+  db.close();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: dir, pollMs: 40, heartbeatMs: 1000 });
+  t.after(() => {
+    close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const firstId = await new Promise((resolve, reject) => {
+    const kill = setTimeout(() => reject(new Error("no SSE event")), 1900);
+    const req = http.get(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/events?since=5",
+        headers: { "Last-Event-ID": "20" },
+      },
+      (res) => {
+        assert.equal(res.statusCode, 200);
+        let buf = "";
+        res.on("data", (chunk) => {
+          buf += chunk.toString("utf8");
+          const match = buf.match(/\nid:\s*(\d+)\n/);
+          if (match) {
+            clearTimeout(kill);
+            req.destroy();
+            resolve(Number(match[1]));
+          }
+        });
+      },
+    );
+    req.on("error", (err) => {
+      if (err.code !== "ECONNRESET") reject(err);
+    });
+  });
+  assert.equal(firstId, 21);
 });

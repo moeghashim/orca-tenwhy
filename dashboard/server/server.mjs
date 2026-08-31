@@ -75,9 +75,11 @@ export function createDashboardServer({
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/events") {
-      const sinceHeader = req.headers["last-event-id"];
-      const sinceQuery = url.searchParams.get("since");
-      let lastId = Number(sinceQuery ?? sinceHeader ?? 0) || 0;
+      // since= is a bootstrap hint only. When Last-Event-ID is also present, use the
+      // larger id so we never replay events the client has already applied.
+      const headerId = Number(req.headers["last-event-id"] ?? 0) || 0;
+      const queryId = Number(url.searchParams.get("since") ?? 0) || 0;
+      let lastId = Math.max(headerId, queryId);
       res.writeHead(200, {
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache, no-transform",
