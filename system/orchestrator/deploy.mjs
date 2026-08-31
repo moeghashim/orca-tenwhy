@@ -56,6 +56,7 @@ function childEnv(record) {
     env.CLOUDFLARE_ACCOUNT_ID = loaded.SITE_ACCOUNT_ID;
   }
   if (record?.slug) env.TENWHY_SLUG = record.slug;
+  if (record?.env_file) env.TENWHY_ENV_FILE = record.env_file;
   return env;
 }
 

@@ -90,6 +90,8 @@ P5-fix4 (Codex `P5 issues #r4`): `WEBSITE_GATE_SKIP_LIGHTHOUSE=1 TENWHY_DEV=1 sy
 
 P5-fix4 item 3 (Codex `P5-deploy issues #r1`): `node --test system/orchestrator/test_provision.mjs` → `✔ provision.sh refuses ../x, /tmp/x, and TENWHY_PROVISION_DIR=/tmp (exit 2)` `tests 1` `pass 1` `fail 0` `exit=0`. `_pending_`
 
+P5-fix4 item 4 (Codex `P5-deploy issues #r1`): `node --test system/orchestrator/test_deploy.mjs` → `✔ deploy.sh refuses without a matching approve row (exit 5)` · `✔ deploy.sh redacts wrangler credentials from DEPLOY.md, stdout, and events` · `✔ deploy.mjs records deploy.refused on a temp DB` `tests 3` `pass 3` `fail 0` `exit=0`. `_pending_`
+
 P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-30):
 
 - `5` → `5.4.21` `sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==`

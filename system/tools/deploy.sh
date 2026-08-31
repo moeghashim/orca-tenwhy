@@ -63,16 +63,59 @@ compatibility_date = "${COMPAT}"
 directory = "dist"
 EOF
 
+ENV_FILE="${TENWHY_ENV_FILE:-}"
+if [[ -z "$ENV_FILE" && -f "$ROOT/state/provision/${ENGAGEMENT_ID}.json" ]]; then
+  ENV_FILE="$(python3 -c 'import json,sys
+p=sys.argv[1]
+try:
+    print(json.load(open(p, encoding="utf-8")).get("env_file") or "")
+except Exception:
+    print("")
+' "$ROOT/state/provision/${ENGAGEMENT_ID}.json")"
+fi
+
 set +e
 WLOG="$(mktemp)"
+WRED="$(mktemp)"
 wrangler deploy --cwd "$WEBSITE" >"$WLOG" 2>&1
 WEXIT=$?
 set -e
-WTAIL="$(tail -n 40 "$WLOG")"
+python3 - "$WLOG" "$WRED" "${ENV_FILE:-}" <<'PY'
+import os, re, sys
+src, dest, env_file = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(src, encoding="utf-8", errors="replace").read()
+named = re.compile(r"^(SITE_API_TOKEN|SITE_ACCOUNT_ID|CLOUDFLARE_.*)$")
+secrets = []
+
+def add(v):
+    if v:
+        secrets.append(v)
+
+for k, v in os.environ.items():
+    if named.match(k):
+        add(v)
+
+if env_file and os.path.isfile(env_file):
+    with open(env_file, encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                val = val[1:-1]
+            if named.match(key) or len(val) >= 16:
+                add(val)
+
+for secret in sorted(set(secrets), key=len, reverse=True):
+    text = text.replace(secret, "[redacted]")
+open(dest, "w", encoding="utf-8").write(text)
+PY
+WTAIL="$(tail -n 40 "$WRED")"
 if [[ "$WEXIT" -ne 0 ]]; then
   echo "deploy.sh: wrangler deploy failed:" >&2
   printf '%s\n' "$WTAIL" >&2
-  rm -f "$WLOG"
+  rm -f "$WLOG" "$WRED"
   exit "$WEXIT"
 fi
 
@@ -83,7 +126,14 @@ urls = re.findall(r"https://[^\s\"']+", text)
 print(urls[-1].rstrip(").,]>") if urls else "")
 PY
 )"
-rm -f "$WLOG"
+VERSION_ID="$(python3 - "$WLOG" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+m = re.search(r"Version ID:\s*(\S+)", text)
+print(m.group(1).rstrip(").,]>") if m else "")
+PY
+)"
+rm -f "$WLOG" "$WRED"
 if [[ -z "$LIVE_URL" && -n "${SITE_WORKERS_DEV_SUBDOMAIN:-}" ]]; then
   LIVE_URL="https://${NAME}.${SITE_WORKERS_DEV_SUBDOMAIN}"
 fi
@@ -110,6 +160,9 @@ NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "# Deploy"
   echo
   echo "- url: ${LIVE_URL}"
+  if [[ -n "$VERSION_ID" ]]; then
+    echo "- version: ${VERSION_ID}"
+  fi
   echo "- deployed_at: ${NOW}"
   echo
   echo "\`\`\`"
