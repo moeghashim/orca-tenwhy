@@ -365,6 +365,66 @@ def copy_allowed_tree(src: Path, dest: Path) -> str | None:
     return None
 
 
+MAX_ARTIFACT_FILE = 10 * 1024 * 1024
+MAX_ARTIFACT_TOTAL = 50 * 1024 * 1024
+
+
+def _contained(path: Path, root: Path) -> bool:
+    try:
+        real = path.resolve()
+        root_real = root.resolve()
+    except OSError:
+        return False
+    return str(real) == str(root_real) or str(real).startswith(str(root_real) + os.sep)
+
+
+def copy_dist_out(src: Path, dest: Path) -> str | None:
+    src_real = src.resolve()
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+        rel_dir = os.path.relpath(dirpath, src)
+        dst = os.lstat(dirpath)
+        if stat.S_ISLNK(dst.st_mode) or not stat.S_ISDIR(dst.st_mode):
+            rel = "." if rel_dir == "." else rel_dir
+            return f"unsafe artifact: {rel}"
+        for d in list(dirnames):
+            p = Path(dirpath) / d
+            rel = str(Path(rel_dir) / d) if rel_dir != "." else d
+            st = os.lstat(p)
+            if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+                return f"unsafe artifact: {rel}"
+            if not _contained(p, src_real):
+                return f"unsafe artifact: {rel}"
+            (dest / rel).mkdir(parents=True, exist_ok=True)
+        for name in filenames:
+            p = Path(dirpath) / name
+            rel = str(Path(rel_dir) / name) if rel_dir != "." else name
+            st = os.lstat(p)
+            mode = st.st_mode
+            if (
+                stat.S_ISLNK(mode)
+                or not stat.S_ISREG(mode)
+                or st.st_nlink > 1
+                or stat.S_ISSOCK(mode)
+                or stat.S_ISFIFO(mode)
+                or stat.S_ISCHR(mode)
+                or stat.S_ISBLK(mode)
+            ):
+                return f"unsafe artifact: {rel}"
+            if st.st_size > MAX_ARTIFACT_FILE or total + st.st_size > MAX_ARTIFACT_TOTAL:
+                return f"unsafe artifact: {rel}"
+            if not _contained(p, src_real):
+                return f"unsafe artifact: {rel}"
+            total += st.st_size
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(p, target, follow_symlinks=False)
+    return None
+
+
 def write_vite_config(tree: Path) -> list[str]:
     htmls = sorted(p.name for p in tree.glob("*.html") if p.is_file())
     mapping = {Path(name).stem: name for name in htmls}
@@ -472,9 +532,9 @@ def run_build(web: Path, loop_run_id: str) -> tuple[dict, BuildCtx]:
     if not dist.is_dir():
         return check("build_ok", False, "vite build exited 0 but dist/ is missing"), ctx
     dest = web / "dist"
-    if dest.exists():
-        shutil.rmtree(dest)
-    shutil.copytree(dist, dest)
+    copied = copy_dist_out(dist, dest)
+    if copied:
+        return check("build_ok", False, copied), ctx
     return check("build_ok", True, "ok"), ctx
 
 

@@ -154,6 +154,24 @@ class WebsiteGateTests(unittest.TestCase):
         if skip_lh:
             self.assertEqual(rc, 0)
 
+    def test_fail_build_artifact_symlink(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import copy_dist_out
+
+        tmp = Path(tempfile.mkdtemp())
+        src = tmp / "dist"
+        src.mkdir()
+        (src / "index.html").write_text("<html></html>", encoding="utf-8")
+        (src / "public").mkdir()
+        outside = tmp / "secret"
+        outside.write_text("pwn", encoding="utf-8")
+        (src / "public" / "etc").symlink_to(outside)
+        dest = tmp / "out"
+        detail = copy_dist_out(src, dest)
+        self.assertIsNotNone(detail)
+        self.assertIn("unsafe artifact:", detail)
+        shutil.rmtree(tmp)
+
     def test_tampered_vite_tarball_fails_integrity(self):
         sys.path.insert(0, str(GATE.parent))
         from website_gate import sha512_sri, verify_vite_tarball
