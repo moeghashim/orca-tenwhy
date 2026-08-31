@@ -1,5 +1,5 @@
 import { statusOf, tokens } from "./status.js";
-import { isRecent, rel } from "./time.js";
+import { clockTime, isRecent, rel } from "./time.js";
 
 const ROW_H = `${tokens.space.tableRowHeight}px`;
 const FLASH = tokens.color.liveFlash;
@@ -520,7 +520,7 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
       { class: "side-foot" },
       el("div", { class: "mono faint" }, "read-only console"),
       el("div", { class: "faint" }, "Loops act autonomously. This surface observes; it never writes."),
-      el("div", { class: "mono faint" }, `snapshot ${snap?.snapshotAt ? rel(snap.snapshotAt, now) : "—"} · v0.1.0`),
+      el("div", { class: "mono faint", "data-snapshot-clock": "1" }, `snapshot ${clockTime(snap?.serverTime)} · v0.1.0`),
     ),
   );
   const main = el("main", { class: "main" });

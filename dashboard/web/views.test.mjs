@@ -153,6 +153,11 @@ test("connection card is two lines: live + SSE /api/events", () => {
   assert.ok(disc.root.querySelector("[data-conn-sub]").textContent);
 });
 
+test("sidebar footer renders snapshot HH:MM:SS from serverTime", () => {
+  const { root } = mount("#/runs");
+  assert.equal(root.querySelector("[data-snapshot-clock]").textContent, "snapshot 22:00:00 · v0.1.0");
+});
+
 test("sidebar wordmark is one nowrap line tenwhy / loop graph with operations console subtitle", () => {
   const { root } = mount("#/runs");
   const mark = root.querySelector(".wordmark");
