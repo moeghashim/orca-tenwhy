@@ -21,6 +21,9 @@ state/pi-sessions/
 state/customers/
 state/remotes/
 state/npm-cache/
+state/provision/*/
+.projects/vault/
+.projects/cache/
 system/tools/.venv/
 *.tar.gz
 __pycache__/
