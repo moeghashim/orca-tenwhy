@@ -91,7 +91,7 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 |---|---|---|---|---|
 | P9.1 | 🟡 | `node --test "dashboard/server/*.test.mjs"` → `✔ dashboard connection throws on INSERT (readOnly)` · `✔ /api/snapshot from the seeded DB has comparisons with valid and flagged cells and kb_files listing the real files` · `✔ insert an events row via sqlite3 while an SSE client is connected → patch received in < 2 s with the re-read entity` `tests 3` `pass 3` `fail 0` `exit=0`. | | `_pending_` |
 | P9.2 | 🟡 | `node --test "dashboard/web/*.test.mjs"` → 3 pass (enum status module; runs 41px rows + `◔ running` + `2/4` two filled segments + amber attempt dots + `⚑ 1 runs need human input`; loop/failures/customers + ✓/⚑ cells + actual kb filenames) `fail 0`. `npx vite build --config dashboard/web/vite.config.js` → `✓ built in 239ms` `exit=0`. | | `_pending_` |
-| P9.3 | ⬜ | | | |
+| P9.3 | 🟡 | `node --test dashboard/web/live.test.mjs` → `✔ applyPatch changes a cell in place with the row order unchanged and the row marked flashed` · `✔ loading/empty/disconnected states render the exact copy` · `✔ SSE-kill test → red banner + snapshot label` `pass 3` `fail 0` `exit=0`. | | `_pending_` |
 | P9.4 | ⬜ | | | |
 
 ## Phase 7 — Customer flow + approval writes
