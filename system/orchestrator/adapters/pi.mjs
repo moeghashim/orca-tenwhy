@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const providerLocks = new Map();
 
+export function piScriptForRole(role, loopName, repoRoot = ROOT) {
+  if (role === "reviewer") return path.join(repoRoot, "system/loops/_shared/run-pi-reviewer.sh");
+  return path.join(repoRoot, "system/loops", loopName, "run-pi.sh");
+}
+
 function withProviderLock(provider, fn) {
   const key = provider || "default";
   const prev = providerLocks.get(key) ?? Promise.resolve();
@@ -113,10 +118,7 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
       );
       await fs.mkdir(sessionDir, { recursive: true });
       await fs.mkdir(workdir, { recursive: true });
-      const script =
-        role === "reviewer"
-          ? path.join(repoRoot, "system/loops/_shared/run-pi-reviewer.sh")
-          : path.join(repoRoot, "system/loops", loopName, "run-pi.sh");
+      const script = piScriptForRole(role, loopName, repoRoot);
       const result = await withProviderLock(provider, () =>
         runPiScript({
           script,
