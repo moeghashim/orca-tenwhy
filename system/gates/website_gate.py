@@ -7,6 +7,7 @@ import fnmatch
 import json
 import os
 import re
+import unicodedata
 import shutil
 import signal
 import socket
@@ -551,15 +552,27 @@ def resolve_in_dist(dist: Path, from_file: Path, url: str) -> Path | None:
 
 
 def visible_text(html: str) -> str:
-    stripped = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", " ", html, flags=re.I)
+    stripped = re.sub(r"<!--.*?-->", " ", html, flags=re.S)
+    stripped = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", " ", stripped, flags=re.I)
     stripped = re.sub(r"<style\b[^>]*>[\s\S]*?</style>", " ", stripped, flags=re.I)
+    stripped = re.sub(r"<template\b[^>]*>[\s\S]*?</template>", " ", stripped, flags=re.I)
+    stripped = re.sub(r"<noscript\b[^>]*>[\s\S]*?</noscript>", " ", stripped, flags=re.I)
     stripped = re.sub(r"<[^>]+>", " ", stripped)
-    stripped = re.sub(r"\s+", " ", stripped)
-    return stripped.strip().lower()
+    stripped = unicodedata.normalize("NFC", stripped)
+    stripped = re.sub(r"\s+", " ", stripped).strip().casefold()
+    return stripped
 
 
 def norm_ws(s: str) -> str:
-    return re.sub(r"\s+", " ", s).strip().lower()
+    s = unicodedata.normalize("NFC", str(s or ""))
+    return re.sub(r"\s+", " ", s).strip().casefold()
+
+
+def phrase_in(blob: str, name: str) -> bool:
+    n = norm_ws(name)
+    if not n:
+        return False
+    return re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", blob) is not None
 
 
 def collect_html_files(dist: Path) -> list[Path]:
@@ -680,16 +693,21 @@ def copy_grounded(workdir: Path) -> dict:
         visible_text(p.read_text(encoding="utf-8", errors="replace")) for p in collect_html_files(dist)
     )
     missing = []
-    if not company or company not in blob:
+    shorts = [n for n in [company, *products] if 0 < len(n) < 3]
+    if not company or not phrase_in(blob, company):
         missing.append(f"company.name {company!r}")
-    found_products = [n for n in products if n in blob]
+    found_products = [n for n in products if phrase_in(blob, n)]
     if len(found_products) < 3:
         missing.append(
             f"need ≥3 product names, found {len(found_products)} of {len(products)}: "
             + ", ".join(found_products or ["(none)"])
         )
     ok = not missing
-    return check("copy_grounded", ok, "ok" if ok else "; ".join(missing))
+    detail = "ok" if ok else "; ".join(missing)
+    if shorts:
+        amb = ", ".join(f"ambiguous short name: {s}" for s in shorts)
+        detail = f"{detail}; {amb}" if detail != "ok" else f"ok; {amb}"
+    return check("copy_grounded", ok, detail)
 
 
 def free_port() -> int:

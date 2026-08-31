@@ -236,6 +236,10 @@ class WebsiteGateTests(unittest.TestCase):
     def test_fail_copy(self):
         self._assert_case("fail_copy", 1, "copy_grounded")
 
+    def test_fail_copy_substring(self):
+        checks = self._assert_case("fail_copy_substring", 1, "copy_grounded")
+        self.assertIn("company.name", checks[3]["detail"])
+
     def test_lighthouse_skip_requires_tenwhy_dev(self):
         sys.path.insert(0, str(GATE.parent))
         from website_gate import lighthouse_skip_honoured  # noqa: E402
