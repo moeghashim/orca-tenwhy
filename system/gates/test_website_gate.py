@@ -678,3 +678,11 @@ class ImageBriefParseTests(unittest.TestCase):
         mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
         text = "| asset | path | description | size |\n|---|---|---|---|\n| Hero | `/images/hero.svg` | x | 1200x600 |\n| Card | \"/images/card.svg\" | y | 400x300 |\n| Plain | /images/plain.svg | z | 100x100 |\n"
         self.assertEqual(mod.parse_image_brief_paths(text), ["/images/hero.svg", "/images/card.svg", "/images/plain.svg"])
+
+    def test_mismatched_wrappers_are_not_stripped(self):
+        import importlib.util, pathlib
+        spec = importlib.util.spec_from_file_location("website_gate", pathlib.Path(__file__).with_name("website_gate.py"))
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        text = "| asset | path | description | size |\n|---|---|---|---|\n| A | `/images/a.svg\" | x | 1x1 |\n| B | '/images/b.svg` | y | 1x1 |\n| C | \"/images/c.svg | z | 1x1 |\n"
+        # mismatched wrappers survive verbatim (so resolve_in_dist rejects them) — never silently repaired
+        self.assertEqual(mod.parse_image_brief_paths(text), ['`/images/a.svg"', "'/images/b.svg`", '"/images/c.svg'])

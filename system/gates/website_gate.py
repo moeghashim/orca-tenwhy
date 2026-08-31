@@ -639,8 +639,12 @@ def parse_image_brief_paths(text: str) -> list[str]:
             continue
         if path_idx is None or path_idx >= len(cells):
             continue
-        # Markdown authors (and the designer model) wrap paths in backticks or quotes.
-        p = cells[path_idx].strip().strip("`").strip('"').strip("'").strip()
+        # Markdown authors (and the designer model) wrap paths in backticks or quotes:
+        # strip exactly one *matching* enclosing pair; mismatched wrappers stay as-is
+        # (and are then rejected by resolve_in_dist).
+        p = cells[path_idx].strip()
+        if len(p) >= 2 and p[0] == p[-1] and p[0] in "`\"'":
+            p = p[1:-1].strip()
         if p:
             paths.append(p)
     return paths
