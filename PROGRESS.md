@@ -80,6 +80,12 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 | P5.5 | ⬜ | | | |
 | P5.6 | ⬜ | | | |
 
+P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-30):
+
+- `5` → `5.4.21` `sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==`
+- `6` → `6.4.3` `sha512-NTKlcQjlAK7MlQoyb6LgaqHc8sso/pVyUJYWMws3jg21uTJw/LddqIFPcPqP6PzpgbIcZyKI85sFE4HBrQDA8A==`
+- `7` → `7.3.6` `sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==`
+
 ## §8 — Customer repo template
 
 | ID | Status | Verify command → pasted output | Commit | Review |

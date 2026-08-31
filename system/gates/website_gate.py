@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -28,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA_PATH = Path(__file__).resolve().parent / "brand_tokens_schema.json"
 PKG_SCHEMA_PATH = Path(__file__).resolve().parent / "website_package_schema.json"
 VITE_TEMPLATE = Path(__file__).resolve().parent / "vite.config.template.mjs"
+VITE_VERSIONS_PATH = Path(__file__).resolve().parent / "vite_versions.json"
 SANDBOX_EXEC = Path("/usr/bin/sandbox-exec")
 SANDBOX_DIR = Path(__file__).resolve().parent / "sandbox"
 NPM_CACHE = ROOT / "state" / "npm-cache"
@@ -287,6 +290,54 @@ def run_in_sandbox(
         return subprocess.CompletedProcess(cmd, 124, "", f"{phase} timed out")
 
 
+def load_vite_versions() -> dict:
+    return json.loads(VITE_VERSIONS_PATH.read_text(encoding="utf-8"))
+
+
+def vite_spec_from_pkg(pkg: dict) -> str | None:
+    for field in ("devDependencies", "dependencies"):
+        block = pkg.get(field) or {}
+        if isinstance(block, dict) and "vite" in block:
+            return str(block["vite"])
+    return None
+
+
+def vetted_vite(spec: str) -> tuple[str, str] | None:
+    match = re.match(r"\^([567])(?:\.\d+){0,2}$", (spec or "").strip())
+    if not match:
+        return None
+    entry = load_vite_versions().get(match.group(1))
+    if not entry or "version" not in entry or "integrity" not in entry:
+        return None
+    return str(entry["version"]), str(entry["integrity"])
+
+
+def sha512_sri(path: Path) -> str:
+    digest = hashlib.sha512(path.read_bytes()).digest()
+    return "sha512-" + base64.b64encode(digest).decode("ascii")
+
+
+def verify_vite_tarball(tarball: Path, expected: str) -> str | None:
+    if not tarball.is_file():
+        return "vite integrity mismatch"
+    if sha512_sri(tarball) != expected:
+        return "vite integrity mismatch"
+    return None
+
+
+def assert_vite_installed(tree: Path, version: str) -> str | None:
+    meta_path = tree / "node_modules" / "vite" / "package.json"
+    if not meta_path.is_file():
+        return "vite binary missing after install"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return "vite version mismatch: unparsable"
+    if meta.get("name") != "vite" or meta.get("version") != version:
+        return f"vite version mismatch: {meta.get('version')}"
+    return None
+
+
 def copy_allowed_tree(src: Path, dest: Path) -> str | None:
     dest.mkdir(parents=True, exist_ok=True)
     for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
@@ -368,28 +419,29 @@ def run_build(web: Path, loop_run_id: str) -> tuple[dict, BuildCtx]:
     home.mkdir()
     ctx.home = home
     ctx.env = gate_env(home, NPM_CACHE)
-    vite_range = (pkg.get("devDependencies") or pkg.get("dependencies") or {}).get("vite")
-    view = run_in_sandbox(
+    spec = vite_spec_from_pkg(pkg)
+    vetted = vetted_vite(spec or "")
+    if not vetted:
+        return check("build_ok", False, "package.json: vite"), ctx
+    ver, integrity = vetted
+    pack = run_in_sandbox(
         "install",
-        ["npm", "view", f"vite@{vite_range}", "version", "--json"],
+        ["npm", "pack", f"vite@{ver}", "--pack-destination", str(NPM_CACHE)],
         tree=tree,
         cache=NPM_CACHE,
         home=home,
         env=ctx.env,
         timeout=120,
     )
-    if view.returncode != 0:
-        return check("build_ok", False, last_lines(view.stderr or view.stdout or "npm view failed")), ctx
-    try:
-        ver = json.loads((view.stdout or "").strip() or '""')
-        if isinstance(ver, list):
-            ver = ver[-1]
-        ver = str(ver).strip()
-    except json.JSONDecodeError:
-        return check("build_ok", False, "npm view vite version: unparsable"), ctx
+    if pack.returncode != 0:
+        return check("build_ok", False, last_lines(pack.stderr or pack.stdout or "npm pack failed")), ctx
+    tarball = NPM_CACHE / f"vite-{ver}.tgz"
+    mismatch = verify_vite_tarball(tarball, integrity)
+    if mismatch:
+        return check("build_ok", False, mismatch), ctx
     inst = run_in_sandbox(
         "install",
-        ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", "--no-package-lock", f"vite@{ver}"],
+        ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", "--no-package-lock", str(tarball)],
         tree=tree,
         cache=NPM_CACHE,
         home=home,
@@ -397,6 +449,9 @@ def run_build(web: Path, loop_run_id: str) -> tuple[dict, BuildCtx]:
     )
     if inst.returncode != 0:
         return check("build_ok", False, last_lines(inst.stderr or inst.stdout)), ctx
+    installed = assert_vite_installed(tree, ver)
+    if installed:
+        return check("build_ok", False, installed), ctx
     vite_js = tree / VITE_BIN
     if not vite_js.is_file():
         return check("build_ok", False, "vite binary missing after install"), ctx

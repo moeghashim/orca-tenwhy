@@ -154,6 +154,32 @@ class WebsiteGateTests(unittest.TestCase):
         if skip_lh:
             self.assertEqual(rc, 0)
 
+    def test_tampered_vite_tarball_fails_integrity(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import sha512_sri, verify_vite_tarball
+
+        tmp = Path(tempfile.mkdtemp())
+        tarball = tmp / "vite-6.4.3.tgz"
+        tarball.write_bytes(b"vite-tarball-bytes")
+        expected = sha512_sri(tarball)
+        self.assertIsNone(verify_vite_tarball(tarball, expected))
+        tarball.write_bytes(b"vite-tarball-bytes!")
+        self.assertEqual(verify_vite_tarball(tarball, expected), "vite integrity mismatch")
+        shutil.rmtree(tmp)
+
+    def test_wrong_vite_version_in_node_modules_fails(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import assert_vite_installed
+
+        tmp = Path(tempfile.mkdtemp())
+        pkg = tmp / "node_modules" / "vite" / "package.json"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_text(json.dumps({"name": "vite", "version": "0.0.1"}), encoding="utf-8")
+        self.assertIn("vite version mismatch", assert_vite_installed(tmp, "6.4.3") or "")
+        pkg.write_text(json.dumps({"name": "vite", "version": "6.4.3"}), encoding="utf-8")
+        self.assertIsNone(assert_vite_installed(tmp, "6.4.3"))
+        shutil.rmtree(tmp)
+
     def test_sandbox_denies_home_write_and_network(self):
         sys.path.insert(0, str(GATE.parent))
         from website_gate import NPM_CACHE, gate_env, run_in_sandbox
