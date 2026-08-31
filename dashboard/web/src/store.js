@@ -67,7 +67,19 @@ export function createStore(initial = null) {
         for (const row of ents[table]) replaceById(snapshot[table], row);
       }
       if (ents.comparisons && typeof ents.comparisons === "object") {
-        snapshot.comparisons = { ...(snapshot.comparisons || {}), ...ents.comparisons };
+        const next = { ...(snapshot.comparisons || {}), ...ents.comparisons };
+        const runs = snapshot.loop_runs || [];
+        for (const runId of Object.keys(ents.comparisons)) {
+          const run = runs.find((r) => r.id === runId);
+          if (!run || run.loop_name !== "company-research" || run.status !== "gate_passed") continue;
+          for (const other of runs) {
+            if (other.id === runId) continue;
+            if (other.engagement_id !== run.engagement_id) continue;
+            if (other.loop_name !== "company-research") continue;
+            delete next[other.id];
+          }
+        }
+        snapshot.comparisons = next;
       }
       emit();
     },

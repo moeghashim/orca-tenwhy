@@ -69,3 +69,82 @@ test("comparison table renders ✓/⚑", () => {
   assert.ok(cells.some((c) => c.getAttribute("data-cmp-cell") === "valid" && c.textContent.includes("✓")));
   assert.ok(cells.some((c) => c.getAttribute("data-cmp-cell") === "flagged" && c.textContent.includes("⚑")));
 });
+
+test("newer gate_passed research comparison drops the older key and renders superseded", () => {
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 2,
+    engagements: [
+      {
+        id: "eng_e",
+        customer_name: "Echo",
+        status: "running",
+        active_loop: "company-research",
+        last_event_at: "2026-08-30T21:00:00Z",
+        last_note: "",
+        kb_files: [],
+        live_url: null,
+        repo_url: null,
+      },
+    ],
+    loop_runs: [
+      {
+        id: "run_old",
+        engagement_id: "eng_e",
+        loop_name: "company-research",
+        attempt: 0,
+        status: "gate_passed",
+        iteration_count: 1,
+        last_note: "old",
+        last_event_at: "2026-08-30T20:00:00Z",
+        adjusted_instructions: null,
+        change_request_id: null,
+      },
+      {
+        id: "run_new",
+        engagement_id: "eng_e",
+        loop_name: "company-research",
+        attempt: 1,
+        status: "running",
+        iteration_count: 1,
+        last_note: "retry",
+        last_event_at: "2026-08-30T21:00:00Z",
+        adjusted_instructions: null,
+        change_request_id: null,
+      },
+    ],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {
+      run_old: {
+        columns: [{ key: "customer_product", label: "customer product" }],
+        rows: [{ cells: [{ value: "old" }] }],
+      },
+    },
+  };
+  const store = createStore(snap);
+  store.applyPatch({
+    entities: {
+      loop_runs: [{ ...snap.loop_runs[1], status: "gate_passed" }],
+      comparisons: {
+        run_new: {
+          columns: [{ key: "customer_product", label: "customer product" }],
+          rows: [{ cells: [{ value: "new" }] }],
+        },
+      },
+    },
+  });
+  assert.equal(store.snapshot.comparisons.run_old, undefined);
+  assert.ok(store.snapshot.comparisons.run_new);
+
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  renderApp(root, { store, hash: "#/runs/eng_e/run_old", now: Date.parse("2026-08-30T22:00:00Z"), go() {} });
+  assert.match(root.textContent, /comparison superseded by run_new/);
+  assert.equal(root.querySelector("[data-comparison]"), null);
+});

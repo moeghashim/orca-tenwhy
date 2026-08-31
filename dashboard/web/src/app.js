@@ -455,7 +455,7 @@ function renderLoop(store, route, now, go) {
   kids.push(cols);
   const latest = Object.keys(snap.comparisons || {}).find((id) => {
     const r = snap.loop_runs.find((x) => x.id === id);
-    return r && r.engagement_id === eng.id;
+    return r && r.engagement_id === eng.id && r.loop_name === "company-research";
   });
   if (run.loop_name === "company-research") {
     if (snap.comparisons?.[run.id]) {
