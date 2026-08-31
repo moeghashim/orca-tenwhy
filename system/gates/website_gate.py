@@ -639,7 +639,8 @@ def parse_image_brief_paths(text: str) -> list[str]:
             continue
         if path_idx is None or path_idx >= len(cells):
             continue
-        p = cells[path_idx]
+        # Markdown authors (and the designer model) wrap paths in backticks or quotes.
+        p = cells[path_idx].strip().strip("`").strip('"').strip("'").strip()
         if p:
             paths.append(p)
     return paths

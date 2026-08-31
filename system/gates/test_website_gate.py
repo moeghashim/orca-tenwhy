@@ -667,3 +667,14 @@ class WebsiteGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImageBriefParseTests(unittest.TestCase):
+    def test_backticked_and_quoted_paths_are_stripped(self):
+        # live-run finding: the designer wrote `/images/hero.svg` in backticks and the gate
+        # reported every placeholder as missing/unwired.
+        import importlib.util, pathlib
+        spec = importlib.util.spec_from_file_location("website_gate", pathlib.Path(__file__).with_name("website_gate.py"))
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        text = "| asset | path | description | size |\n|---|---|---|---|\n| Hero | `/images/hero.svg` | x | 1200x600 |\n| Card | \"/images/card.svg\" | y | 400x300 |\n| Plain | /images/plain.svg | z | 100x100 |\n"
+        self.assertEqual(mod.parse_image_brief_paths(text), ["/images/hero.svg", "/images/card.svg", "/images/plain.svg"])
