@@ -59,7 +59,18 @@ export function acquireDaemonLock(
     return { ok: false, pid: existing };
   }
 
-  const stalePath = path.join(dir, `${base}.stale.${Date.now()}`);
+  const failExist = () => {
+    unlinkOwn(tmpPath);
+    let again = null;
+    try {
+      again = parsePid(fs.readFileSync(lockPath, "utf8"));
+    } catch {
+      again = null;
+    }
+    return { ok: false, pid: again };
+  };
+
+  const stalePath = path.join(dir, `${base}.stale.${Date.now()}.${pid}`);
   try {
     fs.renameSync(lockPath, stalePath);
   } catch (err) {
@@ -67,21 +78,20 @@ export function acquireDaemonLock(
       unlinkOwn(tmpPath);
       throw err;
     }
+    try {
+      return tryLink();
+    } catch (e2) {
+      if (e2.code === "EEXIST") return failExist();
+      unlinkOwn(tmpPath);
+      throw e2;
+    }
   }
 
   try {
     return tryLink();
   } catch (err) {
+    if (err.code === "EEXIST") return failExist();
     unlinkOwn(tmpPath);
-    if (err.code === "EEXIST") {
-      let again = null;
-      try {
-        again = parsePid(fs.readFileSync(lockPath, "utf8"));
-      } catch {
-        again = null;
-      }
-      return { ok: false, pid: again };
-    }
     throw err;
   }
 }

@@ -52,6 +52,7 @@ test("daemon lock replaces a dead pid", () => {
   assert.equal(fs.readFileSync(lockPath, "utf8").trim(), "4242");
   const stale = fs.readdirSync(dir).filter((n) => n.startsWith("daemon.lock.stale."));
   assert.equal(stale.length, 1);
+  assert.match(stale[0], /^daemon\.lock\.stale\.\d+\.4242$/);
   assert.equal(fs.readFileSync(path.join(dir, stale[0]), "utf8").trim(), String(dead));
   releaseDaemonLock(lockPath, { pid: 4242 });
   assert.equal(fs.existsSync(lockPath), false);
@@ -105,6 +106,42 @@ test("two acquirers racing: exactly one succeeds, the other exits 3", async () =
   const [ea, eb] = await Promise.all([waitExit(a), waitExit(b)]);
   const codes = [ea.code, eb.code].sort((x, y) => x - y);
   assert.deepEqual(codes, [0, 3], JSON.stringify({ ea, eb, out: a.stderr?.toString?.() }));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("two children racing a dead-pid stale lock: exactly one acquires", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const goPath = path.join(dir, "go");
+  fs.writeFileSync(lockPath, "2147483646\n");
+  const src = `
+    import fs from "node:fs";
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const go = ${JSON.stringify(goPath)};
+    const lock = ${JSON.stringify(lockPath)};
+    const start = Date.now();
+    while (!fs.existsSync(go)) {
+      if (Date.now() - start > 5000) process.exit(99);
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    const got = acquireDaemonLock(lock);
+    if (!got.ok) process.exit(3);
+    await new Promise((r) => setTimeout(r, 1500));
+    process.exit(0);
+  `;
+  const spawnRacer = () =>
+    spawn(process.execPath, ["--input-type=module", "-e", src], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  const a = spawnRacer();
+  const b = spawnRacer();
+  await new Promise((r) => setTimeout(r, 40));
+  fs.writeFileSync(goPath, "1");
+  const [ea, eb] = await Promise.all([waitExit(a), waitExit(b)]);
+  const codes = [ea.code, eb.code].sort((x, y) => x - y);
+  assert.deepEqual(codes, [0, 3], JSON.stringify({ ea, eb }));
+  const stale = fs.readdirSync(dir).filter((n) => n.startsWith("daemon.lock.stale."));
+  assert.ok(stale.length >= 1);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
