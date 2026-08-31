@@ -182,7 +182,7 @@ test("loop-detail full live sync updates each region in place", () => {
   const chip = root.querySelector('[data-pipe="company-research"]');
   const iter = root.querySelector('[data-iter-n="1"]');
   const pending = root.querySelector("[data-iter-pending]");
-  const scrape = root.querySelector('[data-scrape="https://alpha.example"]');
+  const scrape = root.querySelector('[data-scrape="sc1"]');
   const gate = root.querySelector("[data-gate='g1']");
   const cmp = root.querySelector("[data-comparison]");
   assert.ok(shell && head && meta && pipe && chip && iter && pending && scrape && gate && cmp);
@@ -224,7 +224,7 @@ test("loop-detail full live sync updates each region in place", () => {
   assert.ok(pipe.isSameNode(root.querySelector("[data-pipeline]")));
   assert.ok(chip.isSameNode(root.querySelector('[data-pipe="company-research"]')));
   assert.ok(iter.isSameNode(root.querySelector('[data-iter-n="1"]')));
-  assert.ok(scrape.isSameNode(root.querySelector('[data-scrape="https://alpha.example"]')));
+  assert.ok(scrape.isSameNode(root.querySelector('[data-scrape="sc1"]')));
   assert.ok(gate.isSameNode(root.querySelector("[data-gate='g1']")));
   assert.ok(cmp.isSameNode(root.querySelector("[data-comparison]")));
   assert.match(head.textContent, /gate_passed|passed/);
@@ -234,10 +234,61 @@ test("loop-detail full live sync updates each region in place", () => {
   assert.ok(root.querySelector('[data-iter-n="2"]'));
   assert.equal(root.querySelector("[data-iter-pending]"), null);
   assert.match(scrape.textContent, /404/);
-  assert.ok(root.querySelector('[data-scrape="https://beta.example"]'));
+  assert.ok(root.querySelector('[data-scrape="sc2"]'));
   assert.match(gate.textContent, /pass/);
   assert.match(root.querySelector("[data-gate='g2']").textContent, /competitors/);
   assert.match(cmp.textContent, /new/);
+});
+
+test("scrape provenance keeps two rows with the same URL and different ids", () => {
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "running", active_loop: "company-research", last_event_at: "2026-08-30T21:59:00Z", last_note: "", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      {
+        id: "run_a",
+        engagement_id: "eng_a",
+        loop_name: "company-research",
+        attempt: 0,
+        status: "running",
+        iteration_count: 1,
+        last_note: "",
+        last_event_at: "2026-08-30T21:59:00Z",
+        adjusted_instructions: null,
+        change_request_id: null,
+      },
+    ],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const { root, store } = mount({ hash: "#/runs/eng_a/run_a", snap });
+  store.applyPatch({
+    entities: {
+      scrapes: [{ id: "sc_ok", loop_run_id: "run_a", url: "https://same.example", http_status: 200, created_at: "2026-08-30T21:40:00Z" }],
+    },
+  });
+  store.applyPatch({
+    entities: {
+      scrapes: [{ id: "sc_no", loop_run_id: "run_a", url: "https://same.example", http_status: 403, created_at: "2026-08-30T21:41:00Z" }],
+    },
+  });
+  const rows = [...root.querySelectorAll("[data-scrape]")];
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((n) => n.getAttribute("data-scrape")),
+    ["sc_ok", "sc_no"],
+  );
+  assert.match(rows[0].textContent, /200/);
+  assert.match(rows[1].textContent, /403/);
+  assert.ok(rows[0].textContent.includes("https://same.example"));
+  assert.ok(rows[1].textContent.includes("https://same.example"));
 });
 
 test("customers full live sync adds live link and kb file in place", () => {

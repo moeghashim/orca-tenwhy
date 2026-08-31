@@ -511,7 +511,7 @@ function makeScrapeRow(s, now) {
   const codeFg = s.http_status === 200 ? tokens.color.status.passed.fg : tokens.color.status.failed.fg;
   return el(
     "div",
-    { class: "scrape-row", "data-scrape": s.url || s.id },
+    { class: "scrape-row", "data-scrape": s.id },
     el("span", { class: "mono", "data-scrape-status": "1", style: { color: codeFg } }, String(s.http_status ?? "—")),
     el("span", { class: "mono scrape-url" }, s.url),
     el("span", { class: "faint mono", "data-scrape-when": "1" }, rel(s.created_at, now)),
@@ -943,16 +943,23 @@ function syncLoop(shell, route, store, now) {
   const scrapes = (snap.scrapes || []).filter((s) => s.loop_run_id === run.id);
   if (scrapeCard) {
     const existingS = [...scrapeCard.querySelectorAll("[data-scrape]")];
-    const byUrl = new Map(existingS.map((n) => [n.getAttribute("data-scrape"), n]));
-    const keepS = new Set(scrapes.map((s) => s.url || s.id));
+    const byId = new Map(existingS.map((n) => [n.getAttribute("data-scrape"), n]));
+    const keepS = new Set(scrapes.map((s) => s.id));
     for (const s of scrapes) {
-      const key = s.url || s.id;
-      const row = byUrl.get(key);
+      let row = byId.get(s.id);
       if (row) fillScrapeRow(row, s, now);
-      else scrapeCard.append(makeScrapeRow(s, now));
+      else {
+        row = makeScrapeRow(s, now);
+        scrapeCard.append(row);
+        byId.set(s.id, row);
+      }
     }
     for (const row of existingS) {
       if (!keepS.has(row.getAttribute("data-scrape"))) row.remove();
+    }
+    for (const s of scrapes) {
+      const row = byId.get(s.id);
+      if (row) scrapeCard.append(row);
     }
   }
   const latest = Object.keys(snap.comparisons || {}).find((id) => {
