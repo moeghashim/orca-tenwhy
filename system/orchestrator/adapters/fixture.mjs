@@ -1,20 +1,29 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export function createOrchestratorModelFixture({ instructions = [], synthesis } = {}) {
+export function createOrchestratorModelFixture({ instructions = [], synthesis, batch } = {}) {
   const queue = [...instructions];
-  return {
+  const adapter = {
     async composeAdjustedInstructions({ attempt }) {
       const next = queue.shift();
       if (next !== undefined) return next;
       return `Retry attempt ${attempt ?? "n"} with focus on the failed checks.`;
     },
-    async rewriteSynthesis({ targetRel, researchJson }) {
-      if (typeof synthesis === "function") return synthesis({ targetRel, researchJson });
+    async rewriteSynthesis({ targetRel, researchJson, currentBody, kind, record }) {
+      if (typeof synthesis === "function") {
+        return synthesis({ targetRel, researchJson, currentBody, kind, record });
+      }
       const company = researchJson?.company?.name || "company";
       return `Deterministic synthesis for ${targetRel} (${company}).`;
     },
   };
+  if (batch !== undefined) {
+    adapter.rewriteAllSynthesis = async (args) => {
+      if (typeof batch === "function") return batch(args);
+      return batch;
+    };
+  }
+  return adapter;
 }
 
 export function createFixtureAdapter(script) {

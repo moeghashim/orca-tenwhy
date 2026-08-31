@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { slugify } from "./customer_repo.mjs";
+import { info } from "./log.mjs";
 import { runGit, utcNow } from "./util.mjs";
 
 export function splitMarkdown(text) {
@@ -84,27 +85,58 @@ export async function absorbResearch({
   const note = `absorbed research`;
   const historyLine = `- ${now} — ${note} (trace: ${traceRef})`;
 
-  for (const t of targets) {
+  const prepared = targets.map((t) => {
     const abs = path.join(repoDir, t.rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     const current = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : minimal(t.title, now);
     const parsed = splitMarkdown(current);
-    const synthesis = await model.rewriteSynthesis({
-      targetRel: t.rel,
-      kind: t.kind,
-      record: t.record,
-      researchJson,
-      currentBody: parsed.synthesis,
-    });
+    return { ...t, abs, parsed };
+  });
+
+  let batch = null;
+  if (typeof model.rewriteAllSynthesis === "function") {
+    try {
+      batch = await model.rewriteAllSynthesis({
+        targets: prepared.map((t) => ({
+          rel: t.rel,
+          kind: t.kind,
+          record: t.record,
+          currentBody: t.parsed.synthesis,
+        })),
+        researchJson,
+      });
+    } catch {
+      batch = null;
+    }
+    if (!batch || typeof batch !== "object" || Array.isArray(batch)) batch = null;
+  }
+
+  for (const t of prepared) {
+    let synthesis = null;
+    let source = "fallback";
+    const batched = batch && typeof batch[t.rel] === "string" ? batch[t.rel].trim() : "";
+    if (batched) {
+      synthesis = batched;
+      source = "batch";
+    } else {
+      synthesis = await model.rewriteSynthesis({
+        targetRel: t.rel,
+        kind: t.kind,
+        record: t.record,
+        researchJson,
+        currentBody: t.parsed.synthesis,
+      });
+    }
+    info("absorb", "file", { rel: t.rel, source });
     const out = renderMarkdown({
       updated: now,
       trace: traceRef,
-      title: parsed.title || t.title,
-      synthesis: String(synthesis ?? "").trim() || parsed.synthesis,
-      historyTail: parsed.historyTail,
+      title: t.parsed.title || t.title,
+      synthesis: String(synthesis ?? "").trim() || t.parsed.synthesis,
+      historyTail: t.parsed.historyTail,
       historyLine,
     });
-    fs.writeFileSync(abs, out, "utf8");
+    fs.writeFileSync(t.abs, out, "utf8");
   }
 
   runGit(repoDir, ["add", "-A"]);

@@ -96,3 +96,100 @@ test("absorb rewrites synthesis, appends History, never rewrites prior lines", a
   assert.deepEqual(lintFrontmatter(dir), []);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test("batch absorb writes all files with one model call", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-kb-batch-"));
+  const dir = path.join(tmp, "acme");
+  const remotesDir = path.join(tmp, "remotes");
+  const t0 = utcNow();
+  generateCustomerRepo({
+    slug: "acme",
+    customerName: "Acme Dental",
+    idea: "clinic",
+    siteUrl: "https://example.com",
+    targetDir: dir,
+    now: t0,
+  });
+  publishCustomerRepo({ dir, slug: "acme", backend: "local", remotesDir });
+  writeEmptyHistory(dir, t0);
+  let batchCalls = 0;
+  let fallbackCalls = 0;
+  const model = createOrchestratorModelFixture({
+    batch: ({ targets }) => {
+      batchCalls += 1;
+      const out = {};
+      for (const t of targets) out[t.rel] = `BATCH ${t.rel}`;
+      return out;
+    },
+    synthesis: ({ targetRel }) => {
+      fallbackCalls += 1;
+      return `FALLBACK ${targetRel}`;
+    },
+  });
+  await absorbResearch({
+    repoDir: dir,
+    researchJson: RESEARCH,
+    traceRef: "fixture://absorb/batch",
+    model,
+    now: "2026-08-31T12:00:00Z",
+    loopRunId: "run_batch",
+  });
+  assert.equal(batchCalls, 1);
+  assert.equal(fallbackCalls, 0);
+  const overview = fs.readFileSync(path.join(dir, "company/OVERVIEW.md"), "utf8");
+  assert.match(overview, /BATCH company\/OVERVIEW.md/);
+  assert.doesNotMatch(overview, /original Overview body/);
+  assert.ok(fs.existsSync(path.join(dir, "company/competitors/brightsmile.md")));
+  assert.ok(fs.existsSync(path.join(dir, "company/products/whitening.md")));
+  assert.deepEqual(lintFrontmatter(dir), []);
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test("batch absorb missing one file makes exactly one fallback call", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-kb-fb-"));
+  const dir = path.join(tmp, "acme");
+  const remotesDir = path.join(tmp, "remotes");
+  const t0 = utcNow();
+  generateCustomerRepo({
+    slug: "acme",
+    customerName: "Acme Dental",
+    idea: "clinic",
+    siteUrl: "https://example.com",
+    targetDir: dir,
+    now: t0,
+  });
+  publishCustomerRepo({ dir, slug: "acme", backend: "local", remotesDir });
+  writeEmptyHistory(dir, t0);
+  let batchCalls = 0;
+  let fallbackRels = [];
+  const model = createOrchestratorModelFixture({
+    batch: ({ targets }) => {
+      batchCalls += 1;
+      const out = {};
+      for (const t of targets) {
+        if (t.rel === "company/FINDINGS.md") continue;
+        out[t.rel] = `BATCH ${t.rel}`;
+      }
+      return out;
+    },
+    synthesis: ({ targetRel }) => {
+      fallbackRels.push(targetRel);
+      return `FALLBACK ${targetRel}`;
+    },
+  });
+  await absorbResearch({
+    repoDir: dir,
+    researchJson: RESEARCH,
+    traceRef: "fixture://absorb/fb",
+    model,
+    now: "2026-08-31T12:00:00Z",
+    loopRunId: "run_fb",
+  });
+  assert.equal(batchCalls, 1);
+  assert.deepEqual(fallbackRels, ["company/FINDINGS.md"]);
+  const findings = fs.readFileSync(path.join(dir, "company/FINDINGS.md"), "utf8");
+  assert.match(findings, /FALLBACK company\/FINDINGS.md/);
+  const overview = fs.readFileSync(path.join(dir, "company/OVERVIEW.md"), "utf8");
+  assert.match(overview, /BATCH company\/OVERVIEW.md/);
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

@@ -66,5 +66,27 @@ Current body:
 ${String(currentBody || "").slice(0, 4000)}`;
       return runClaude(prompt);
     },
+    async rewriteAllSynthesis({ targets, researchJson }) {
+      const listing = (targets || [])
+        .map((t) => {
+          const slice = t.record ? JSON.stringify(t.record).slice(0, 1500) : "";
+          return `### ${t.rel} (${t.kind || ""})\nResearch slice: ${slice || "(full RESEARCH.json)"}\nCurrent body:\n${String(t.currentBody || "").slice(0, 2000)}`;
+        })
+        .join("\n\n");
+      const prompt = `Return a JSON object mapping each relative markdown path to a rewritten synthesis body. Do not include frontmatter or a History section. Keys must be the exact paths listed.
+
+RESEARCH.json:
+${JSON.stringify(researchJson).slice(0, 12000)}
+
+${listing}`;
+      const text = await runClaude(prompt);
+      const fence = String(text).match(/```(?:json)?\s*([\s\S]*?)```/);
+      const raw = fence ? fence[1] : String(text).trim();
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+        throw new Error("batch synthesis JSON must be an object");
+      }
+      return obj;
+    },
   };
 }
