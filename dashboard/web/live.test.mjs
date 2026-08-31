@@ -229,6 +229,51 @@ test("failures keep card order across patches and re-sort after reconnect snapsh
   assert.deepEqual(ids(), ["run_a", "run_c", "run_b"]);
 });
 
+test("Runs rows keep order while connected and physically reorder on reconnect", () => {
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "running", active_loop: "company-research", last_event_at: "2026-08-30T21:59:00Z", last_note: "a", kb_files: [], live_url: null, repo_url: null },
+      { id: "eng_b", customer_name: "Beta", status: "new", active_loop: "company-research", last_event_at: "2026-08-30T21:00:00Z", last_note: "b", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      { id: "run_a", engagement_id: "eng_a", loop_name: "company-research", attempt: 0, status: "running", iteration_count: 1, last_note: "", last_event_at: "2026-08-30T21:59:00Z" },
+    ],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const { root, store } = mount({ snap });
+  const before = [...root.querySelectorAll("[data-row]")];
+  assert.deepEqual(before.map((n) => n.getAttribute("data-row")), ["eng_a", "eng_b"]);
+  store.applyPatch({
+    entities: {
+      engagements: [{ ...snap.engagements[0], last_event_at: "2026-08-30T22:00:00Z", last_note: "newer" }],
+    },
+  });
+  const patched = [...root.querySelectorAll("[data-row]")];
+  assert.deepEqual(patched.map((n) => n.getAttribute("data-row")), ["eng_a", "eng_b"]);
+  assert.ok(before[0].isSameNode(patched[0]));
+  assert.ok(before[1].isSameNode(patched[1]));
+
+  function reconnect() {
+    const resorted = {
+      ...store.snapshot,
+      engagements: [store.snapshot.engagements[1], store.snapshot.engagements[0]],
+    };
+    store.setSnapshot(resorted, { resort: true });
+  }
+  reconnect();
+  const after = [...root.querySelectorAll("[data-row]")];
+  assert.deepEqual(after.map((n) => n.getAttribute("data-row")), ["eng_b", "eng_a"]);
+  assert.ok(before[0].isSameNode(after[1]));
+  assert.ok(before[1].isSameNode(after[0]));
+});
+
 test("loading/empty/disconnected states render the exact copy", () => {
   const loading = mount({ snap: null });
   assert.equal(loading.root.querySelector("[data-state='loading']").tagName, "DIV");

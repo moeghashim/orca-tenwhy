@@ -271,9 +271,10 @@ function syncRunsTable(table, store, now, go) {
   const byId = new Map(existing.map((n) => [n.getAttribute("data-row"), n]));
   const keep = new Set(engs.map((e) => e.id));
   for (const eng of engs) {
-    const row = byId.get(eng.id);
+    let row = byId.get(eng.id);
     if (row) fillRunRow(row, eng, store, now);
-    else table.append(makeRunRow(eng, store, now, go));
+    else row = makeRunRow(eng, store, now, go);
+    table.append(row);
   }
   for (const row of existing) {
     if (!keep.has(row.getAttribute("data-row"))) row.remove();
