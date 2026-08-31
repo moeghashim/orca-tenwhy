@@ -34,7 +34,7 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
 .sidebar { width: var(--sidebar); flex: none; display: flex; flex-direction: column;
   border-right: 1px solid var(--ink); background: var(--inset); }
 .brand { padding: 20px 16px 16px; }
-.wordmark { font-size: 13px; font-weight: 500; letter-spacing: .02em; }
+.wordmark { font-size: 13px; font-weight: 500; letter-spacing: .02em; white-space: nowrap; }
 .sub { font-size: 11px; color: var(--muted); }
 .conn { margin: 0 16px 16px; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
   border: 1px solid var(--ink); border-radius: 6px; background: var(--surface); }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { renderApp } from "./src/app.js";
@@ -140,6 +141,15 @@ function mount(hash, snap = fixtureSnapshot(), sse) {
   renderApp(root, { store, hash, now: Date.parse("2026-08-30T22:00:00Z"), go() {} });
   return { root, store, document: dom.window.document };
 }
+
+test("sidebar wordmark is one nowrap line tenwhy / loop graph with operations console subtitle", () => {
+  const { root } = mount("#/runs");
+  const mark = root.querySelector(".wordmark");
+  assert.equal(mark.textContent, "tenwhy / loop graph");
+  assert.equal(root.querySelector(".sub").textContent, "operations console");
+  const css = fs.readFileSync(new URL("./src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.wordmark\s*\{[^}]*white-space:\s*nowrap/s);
+});
 
 test("runs view: row count, 41px row height, verbatim badge, iteration 2/4 + 2 filled segments, amber attempt dots, needs_human banner", () => {
   const { root } = mount("#/runs");

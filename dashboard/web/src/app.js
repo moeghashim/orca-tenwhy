@@ -481,7 +481,7 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
   const side = el(
     "aside",
     { class: "sidebar" },
-    el("div", { class: "brand" }, el("div", { class: "wordmark" }, "tenwhy", el("span", { class: "faint" }, " /")), el("div", { class: "sub" }, "loop graph")),
+    el("div", { class: "brand" }, el("div", { class: "wordmark" }, "tenwhy / loop graph"), el("div", { class: "sub" }, "operations console")),
     el(
       "div",
       { class: "conn", "data-conn": sse.state },
