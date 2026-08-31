@@ -53,6 +53,18 @@ export async function materialize({ outputPath, workdir, traceRef = "none", now 
   }
   const researchDir = path.join(workdir, "research");
   fs.mkdirSync(researchDir, { recursive: true });
+  let workReal;
+  let researchReal;
+  try {
+    workReal = fs.realpathSync(workdir);
+    researchReal = fs.realpathSync(researchDir);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  const prefix = workReal.endsWith(path.sep) ? workReal : `${workReal}${path.sep}`;
+  if (researchReal !== workReal && !researchReal.startsWith(prefix)) {
+    return { ok: false, error: `research dir escapes workdir (${researchReal})` };
+  }
   const researchPath = path.join(researchDir, "RESEARCH.json");
   const sourcesPath = path.join(researchDir, "SOURCES.md");
   fs.writeFileSync(researchPath, `${JSON.stringify(value.RESEARCH, null, 2)}\n`, "utf8");
