@@ -397,7 +397,6 @@ export async function runDaemon({
   let wakeSleep = null;
   const stop = () => {
     stopped = true;
-    releaseDaemonLock(lockPath);
     if (wakeSleep) {
       const wake = wakeSleep;
       wakeSleep = null;

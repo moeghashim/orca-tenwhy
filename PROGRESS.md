@@ -88,6 +88,8 @@ P3-fix8 item 2: `node --test system/orchestrator/test_loop_runner.mjs` → `✔ 
 
 P3-fix8 item 3: `node --test --test-timeout=20000 system/orchestrator/test_daemon_lock.mjs` → `✔ two children racing a dead-pid stale lock: exactly one acquires` `tests 6` `pass 6` `fail 0` `exit=0`. `_pending_`
 
+P3-fix8 item 4: `node --test --test-timeout=20000 system/orchestrator/test_daemon_lock.mjs` → `✔ SIGINT mid-tick keeps the lock until the tick finishes` `tests 7` `pass 7` `fail 0` `exit=0`. `_pending_`
+
 P4-fix5 (round 5 item 4): `node --test system/orchestrator/test_loop_runner.mjs system/orchestrator/test_failure_policy.mjs system/loops/company-research/test_prompts.mjs` → `✔ executor prompt on iteration 2 contains URLs scraped in iteration 1` · `✔ iteration-cap retry cites check 5 from reviewer notes when gate_checks is empty` `tests 25` `pass 25` `fail 0` `exit=0`. Executor prompt gets the run's scrape ledger every iteration; retry prefix cites `sources_complete` from reviewer notes when the run ends by iteration cap with no gate_checks. `_pending_`
 
 P4-fix5 items 6–7 (Codex `P4 issues #r7`): `node --test system/orchestrator/test_loop_runner.mjs system/orchestrator/test_failure_policy.mjs system/loops/company-research/test_prompts.mjs` → `✔ scrapes ledger keeps insertion order when created_at ties` · `✔ failedChecksFromReviewerNotes treats FAIL/Fail as fail` · `✔ validateVerdict accepts uppercase PASS/FAIL tokens` `tests 28` `pass 28` `fail 0` `exit=0`. `_pending_`

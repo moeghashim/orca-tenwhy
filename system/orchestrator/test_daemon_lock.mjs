@@ -180,3 +180,50 @@ test("SIGINT to a holder removes its lock; foreign pid is left untouched", async
   assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(process.pid));
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("SIGINT mid-tick keeps the lock until the tick finishes", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const dbPath = path.join(dir, "t.db");
+  const tickingPath = path.join(dir, "ticking");
+  const src = `
+    import fs from "node:fs";
+    import { runDaemon } from ${JSON.stringify(ORCH_MOD)};
+    await runDaemon({
+      intervalMs: 8000,
+      dbPath: ${JSON.stringify(dbPath)},
+      lockPath: ${JSON.stringify(lockPath)},
+      tickOpts: {
+        runLoop: async () => ({}),
+        config: { loops: {} },
+        processApprovals: async () => {
+          fs.writeFileSync(${JSON.stringify(tickingPath)}, "1");
+          await new Promise((r) => setTimeout(r, 1200));
+        },
+      },
+    });
+  `;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", src], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const exited = waitExit(child);
+  await waitFor(() => fs.existsSync(tickingPath));
+  process.kill(child.pid, "SIGINT");
+  await new Promise((r) => setTimeout(r, 80));
+  const probeSrc = `
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const got = acquireDaemonLock(${JSON.stringify(lockPath)});
+    process.exit(got.ok ? 0 : 3);
+  `;
+  const probe = spawn(process.execPath, ["--input-type=module", "-e", probeSrc], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const probed = await waitExit(probe);
+  assert.equal(probed.code, 3, "second acquire must see the lock held during the in-flight tick");
+  assert.equal(fs.existsSync(lockPath), true);
+  const { code, signal } = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 0);
+  assert.equal(fs.existsSync(lockPath), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
