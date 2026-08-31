@@ -411,13 +411,137 @@ function makeGateRow(g) {
   return row;
 }
 
+function loopMetaText(run, now) {
+  return `loop: ${run.loop_name}    iteration ${run.iteration_count}/4    attempt ${run.attempt}/2    last event ${rel(run.last_event_at, now)}`;
+}
+
+function fillPipeChip(chip, lr, active) {
+  const ps = statusOf("run", lr?.status || "queued");
+  chip.style.borderColor = active ? ps.border : tokens.color.border.default;
+  chip.style.background = active ? ps.bg : "#ffffff";
+  const state = chip.querySelector("[data-pipe-state]");
+  if (state) {
+    state.style.color = ps.fg;
+    state.textContent = `${ps.glyph} ${lr?.status || "queued"}`;
+  }
+  let mark = chip.querySelector("[data-pipe-active]");
+  if (active && !mark) chip.append(el("span", { class: "faint", "data-pipe-active": "1" }, "active"));
+  else if (!active && mark) mark.remove();
+}
+
+function makePipeChip(seq, name, lr, active) {
+  const ps = statusOf("run", lr?.status || "queued");
+  return el(
+    "div",
+    {
+      class: "pipe-chip",
+      "data-pipe": name,
+      style: { borderColor: active ? ps.border : tokens.color.border.default, background: active ? ps.bg : "#ffffff" },
+    },
+    el("span", { class: "faint" }, seq),
+    el("span", { class: "mono" }, name),
+    el("span", { "data-pipe-state": "1", style: { color: ps.fg } }, `${ps.glyph} ${lr?.status || "queued"}`),
+    active ? el("span", { class: "faint", "data-pipe-active": "1" }, "active") : null,
+  );
+}
+
+function fillIterRow(row, it, now) {
+  const vs = statusOf("verdict", it.reviewer_verdict || "revise");
+  const node = row.querySelector(".it-node");
+  if (node) {
+    node.textContent = String(it.n);
+    node.style.background = vs.bg;
+    node.style.borderColor = vs.border;
+    node.style.color = vs.fg;
+  }
+  const badgeEl = row.querySelector("[data-badge]");
+  if (badgeEl) paintBadge(badgeEl, "verdict", it.reviewer_verdict);
+  const when = row.querySelector(".it-when");
+  if (when) when.textContent = rel(it.created_at, now);
+  const exec = row.querySelector(".it-exec");
+  if (exec) exec.textContent = it.executor_summary || "";
+  const rev = row.querySelector(".it-rev");
+  if (rev) rev.textContent = `reviewer: ${it.reviewer_notes || ""}`;
+  let trace = row.querySelector(".trace");
+  if (it.pi_trace_ref) {
+    if (!trace) {
+      row.querySelector(".it-body")?.append(el("a", { href: it.pi_trace_ref, class: "trace" }, `${it.pi_trace_ref} ↗`));
+    } else {
+      trace.setAttribute("href", it.pi_trace_ref);
+      trace.textContent = `${it.pi_trace_ref} ↗`;
+    }
+  } else if (trace) {
+    trace.remove();
+  }
+}
+
+function makeIterRow(it, now) {
+  const vs = statusOf("verdict", it.reviewer_verdict || "revise");
+  return el(
+    "div",
+    { class: "it-row", "data-iter-n": String(it.n) },
+    el("div", { class: "it-node", style: { background: vs.bg, borderColor: vs.border, color: vs.fg } }, String(it.n)),
+    el(
+      "div",
+      { class: "it-body" },
+      el(
+        "div",
+        { class: "it-top" },
+        el("span", {}, `iteration ${it.n}`),
+        badge("verdict", it.reviewer_verdict),
+        el("span", { class: "faint mono it-when" }, rel(it.created_at, now)),
+      ),
+      el("div", { class: "it-exec" }, it.executor_summary || ""),
+      el("div", { class: "it-rev" }, `reviewer: ${it.reviewer_notes || ""}`),
+      it.pi_trace_ref ? el("a", { href: it.pi_trace_ref, class: "trace" }, `${it.pi_trace_ref} ↗`) : null,
+    ),
+  );
+}
+
+function makePendingIter(n) {
+  return el(
+    "div",
+    { class: "it-row pending", "data-iter-pending": "1" },
+    el("div", { class: "it-node dashed" }, String(n)),
+    el("span", { class: "faint mono" }, `iteration ${n} in progress — executor working`),
+  );
+}
+
+function makeScrapeRow(s, now) {
+  const codeFg = s.http_status === 200 ? tokens.color.status.passed.fg : tokens.color.status.failed.fg;
+  return el(
+    "div",
+    { class: "scrape-row", "data-scrape": s.url || s.id },
+    el("span", { class: "mono", "data-scrape-status": "1", style: { color: codeFg } }, String(s.http_status ?? "—")),
+    el("span", { class: "mono scrape-url" }, s.url),
+    el("span", { class: "faint mono", "data-scrape-when": "1" }, rel(s.created_at, now)),
+  );
+}
+
+function fillScrapeRow(row, s, now) {
+  const codeFg = s.http_status === 200 ? tokens.color.status.passed.fg : tokens.color.status.failed.fg;
+  const st = row.querySelector("[data-scrape-status]");
+  if (st) {
+    st.textContent = String(s.http_status ?? "—");
+    st.style.color = codeFg;
+  }
+  const url = row.querySelector(".scrape-url");
+  if (url) url.textContent = s.url;
+  const when = row.querySelector("[data-scrape-when]");
+  if (when) when.textContent = rel(s.created_at, now);
+}
+
+function fillComparisonCard(wrap, cmp) {
+  const next = renderComparison(cmp);
+  wrap.replaceChildren(...[...next.childNodes]);
+}
+
 function renderLoop(store, route, now, go) {
   const snap = store.snapshot;
   if (!snap) return loadingBlock();
   const eng = snap.engagements.find((e) => e.id === route.engId);
   const run = snap.loop_runs.find((r) => r.id === route.runId);
   if (!eng || !run) return [emptyBlock("○", "run not found", "This loop run is not in the current snapshot.")];
-  const st = statusOf("run", run.status);
   const iters = (snap.iterations || []).filter((i) => i.loop_run_id === run.id).sort((a, b) => a.n - b.n);
   const gates = (snap.gate_checks || []).filter((g) => g.loop_run_id === run.id);
   const scrapes = (snap.scrapes || []).filter((s) => s.loop_run_id === run.id);
@@ -432,32 +556,18 @@ function renderLoop(store, route, now, go) {
   );
   const head = el(
     "div",
-    { class: "loop-head" },
-    el("div", { class: "h1" }, eng.customer_name),
+    { class: "loop-head", "data-loop-head": "1" },
+    el("div", { class: "h1", "data-loop-name": "1" }, eng.customer_name),
     badge("run", run.status),
   );
-  const meta = el(
-    "div",
-    { class: "loop-meta" },
-    `loop: ${run.loop_name}    iteration ${run.iteration_count}/4    attempt ${run.attempt}/2    last event ${rel(run.last_event_at, now)}`,
-  );
-  const pipe = el("div", { class: "pipeline" });
+  const meta = el("div", { class: "loop-meta", "data-loop-meta": "1" }, loopMetaText(run, now));
+  const pipe = el("div", { class: "pipeline", "data-pipeline": "1" });
   for (const [seq, name] of [
     ["01", "company-research"],
     ["02", "website"],
   ]) {
     const lr = runsFor(snap, eng.id).find((r) => r.loop_name === name);
-    const ps = statusOf("run", lr?.status || "queued");
-    const active = run.loop_name === name;
-    const chip = el(
-      "div",
-      { class: "pipe-chip", style: { borderColor: active ? ps.border : tokens.color.border.default, background: active ? ps.bg : "#ffffff" } },
-      el("span", { class: "faint" }, seq),
-      el("span", { class: "mono" }, name),
-      el("span", { style: { color: ps.fg } }, `${ps.glyph} ${lr?.status || "queued"}`),
-      active ? el("span", { class: "faint" }, "active") : null,
-    );
-    pipe.append(chip);
+    pipe.append(makePipeChip(seq, name, lr, run.loop_name === name));
     if (seq === "01") pipe.append(el("span", { class: "faint" }, "→"));
   }
   const kids = [crumb, head, meta, pipe];
@@ -466,67 +576,24 @@ function renderLoop(store, route, now, go) {
       el(
         "div",
         { class: "adjusted", "data-adjusted": "1" },
-        el("div", { class: "adjusted-h" }, `⟳ attempt ${run.attempt} — orchestrator adjusted instructions`),
+        el("div", { class: "adjusted-h", "data-adjusted-h": "1" }, `⟳ attempt ${run.attempt} — orchestrator adjusted instructions`),
         el("pre", { class: "adjusted-body" }, run.adjusted_instructions || ""),
       ),
     );
   }
-  const timeline = el("div", { class: "card timeline" }, el("div", { class: "card-h" }, "iterations — executor ↔ reviewer"));
-  for (const it of iters) {
-    const vs = statusOf("verdict", it.reviewer_verdict || "revise");
-    timeline.append(
-      el(
-        "div",
-        { class: "it-row" },
-        el("div", { class: "it-node", style: { background: vs.bg, borderColor: vs.border, color: vs.fg } }, String(it.n)),
-        el(
-          "div",
-          { class: "it-body" },
-          el(
-            "div",
-            { class: "it-top" },
-            el("span", {}, `iteration ${it.n}`),
-            badge("verdict", it.reviewer_verdict),
-            el("span", { class: "faint mono it-when" }, rel(it.created_at, now)),
-          ),
-          el("div", { class: "it-exec" }, it.executor_summary || ""),
-          el("div", { class: "it-rev" }, `reviewer: ${it.reviewer_notes || ""}`),
-          it.pi_trace_ref
-            ? el("a", { href: it.pi_trace_ref, class: "trace" }, `${it.pi_trace_ref} ↗`)
-            : null,
-        ),
-      ),
-    );
-  }
-  if (run.status === "running" && iters.length < 4) {
-    timeline.append(
-      el(
-        "div",
-        { class: "it-row pending" },
-        el("div", { class: "it-node dashed" }, String(iters.length + 1)),
-        el("span", { class: "faint mono" }, `iteration ${iters.length + 1} in progress — executor working`),
-      ),
-    );
-  }
+  const timeline = el(
+    "div",
+    { class: "card timeline", "data-timeline": "1" },
+    el("div", { class: "card-h" }, "iterations — executor ↔ reviewer"),
+  );
+  for (const it of iters) timeline.append(makeIterRow(it, now));
+  if (run.status === "running" && iters.length < 4) timeline.append(makePendingIter(iters.length + 1));
   const passed = gates.filter((g) => g.passed === 1 || g.passed === true).length;
   const gateCard = el("div", { class: "card", "data-gate-card": "1" }, el("div", { class: "card-h" }, "gate checks"));
-  for (const g of gates) {
-    gateCard.append(makeGateRow(g));
-  }
+  for (const g of gates) gateCard.append(makeGateRow(g));
   gateCard.append(el("div", { class: "faint mono gate-sum" }, `${passed}/${gates.length} passed · gate runs after reviewer approval`));
-  const scrapeCard = el("div", { class: "card" }, el("div", { class: "card-h" }, "scrape provenance"));
-  for (const s of scrapes) {
-    const codeFg = s.http_status === 200 ? tokens.color.status.passed.fg : tokens.color.status.failed.fg;
-    scrapeCard.append(
-      el(
-        "div",
-        { class: "scrape-row" },
-        el("span", { class: "mono", style: { color: codeFg } }, String(s.http_status ?? "—")),
-        el("span", { class: "mono scrape-url" }, s.url),
-        el("span", { class: "faint mono" }, rel(s.created_at, now)),
-      ),
-    );
-  }
+  const scrapeCard = el("div", { class: "card", "data-scrape-card": "1" }, el("div", { class: "card-h" }, "scrape provenance"));
+  for (const s of scrapes) scrapeCard.append(makeScrapeRow(s, now));
   const cols = el("div", { class: "loop-cols" }, timeline, el("div", { class: "loop-side" }, gateCard, scrapeCard));
   kids.push(cols);
   const latest = Object.keys(snap.comparisons || {}).find((id) => {
@@ -537,7 +604,7 @@ function renderLoop(store, route, now, go) {
     if (snap.comparisons?.[run.id]) {
       kids.push(renderComparison(snap.comparisons[run.id]));
     } else if (latest && latest !== run.id) {
-      kids.push(el("div", { class: "card cmp-superseded" }, `comparison superseded by ${latest}`));
+      kids.push(el("div", { class: "card cmp-superseded", "data-cmp-superseded": "1" }, `comparison superseded by ${latest}`));
     }
   }
   return kids;
@@ -674,6 +741,16 @@ function renderFailures(store, now, go) {
   return [list];
 }
 
+function makeKbRow(f, now) {
+  return el(
+    "div",
+    { class: "kb-row", "data-kb-file": f.path },
+    el("span", { class: "faint" }, "▤"),
+    el("span", {}, f.path),
+    el("span", { class: "faint mono", "data-kb-when": "1" }, rel(f.updated, now)),
+  );
+}
+
 function fillCustomerCard(card, eng, now) {
   const st = statusOf("engagement", eng.status);
   const dot = card.querySelector(".dot");
@@ -686,6 +763,49 @@ function fillCustomerCard(card, eng, now) {
   if (label) {
     label.textContent = st.label;
     label.style.color = st.fg;
+  }
+  const files = card.querySelector("[data-kb-list]");
+  if (files) {
+    const existing = [...files.querySelectorAll("[data-kb-file]")];
+    const byPath = new Map(existing.map((n) => [n.getAttribute("data-kb-file"), n]));
+    const list = eng.kb_files || [];
+    const keep = new Set(list.map((f) => f.path));
+    for (const f of list) {
+      const row = byPath.get(f.path);
+      if (row) {
+        const when = row.querySelector("[data-kb-when]");
+        if (when) when.textContent = rel(f.updated, now);
+      } else {
+        files.append(makeKbRow(f, now));
+      }
+    }
+    for (const row of existing) {
+      if (!keep.has(row.getAttribute("data-kb-file"))) row.remove();
+    }
+  }
+  const links = card.querySelector("[data-cust-links]");
+  if (links) {
+    let repo = links.querySelector("[data-repo-link]");
+    if (eng.repo_url) {
+      if (!repo) {
+        repo = el("a", { href: eng.repo_url, "data-repo-link": "1" }, "repo ↗");
+        links.prepend(repo);
+      } else {
+        repo.setAttribute("href", eng.repo_url);
+      }
+    } else if (repo) {
+      repo.remove();
+    }
+    let live = links.querySelector("[data-live-link]");
+    if (eng.live_url) {
+      if (!live) {
+        links.append(el("a", { href: eng.live_url, "data-live-link": "1" }, "live ↗"));
+      } else {
+        live.setAttribute("href", eng.live_url);
+      }
+    } else if (live) {
+      live.remove();
+    }
   }
 }
 
@@ -701,22 +821,12 @@ function makeCustomerCard(eng, now) {
       el("span", { class: "mono", "data-cust-status": "1", style: { marginLeft: "auto" } }, ""),
     ),
   );
-  const files = el("div", { class: "kb-list" });
-  for (const f of eng.kb_files || []) {
-    files.append(
-      el(
-        "div",
-        { class: "kb-row", "data-kb-file": f.path },
-        el("span", { class: "faint" }, "▤"),
-        el("span", {}, f.path),
-        el("span", { class: "faint mono" }, rel(f.updated, now)),
-      ),
-    );
-  }
+  const files = el("div", { class: "kb-list", "data-kb-list": "1" });
+  for (const f of eng.kb_files || []) files.append(makeKbRow(f, now));
   card.append(files);
-  const links = el("div", { class: "cust-links" });
-  if (eng.repo_url) links.append(el("a", { href: eng.repo_url }, "repo ↗"));
-  if (eng.live_url) links.append(el("a", { href: eng.live_url }, "live ↗"));
+  const links = el("div", { class: "cust-links", "data-cust-links": "1" });
+  if (eng.repo_url) links.append(el("a", { href: eng.repo_url, "data-repo-link": "1" }, "repo ↗"));
+  if (eng.live_url) links.append(el("a", { href: eng.live_url, "data-live-link": "1" }, "live ↗"));
   card.append(links);
   fillCustomerCard(card, eng, now);
   return card;
@@ -752,7 +862,66 @@ function renderCustomers(store, now) {
 function syncLoop(shell, route, store, now) {
   const snap = store.snapshot;
   const run = snap?.loop_runs?.find((r) => r.id === route.runId);
-  if (!run) return false;
+  const eng = snap?.engagements?.find((e) => e.id === route.engId);
+  if (!run || !eng) return false;
+  const head = shell.querySelector("[data-loop-head]");
+  if (!head) return false;
+  const name = head.querySelector("[data-loop-name]");
+  if (name) name.textContent = eng.customer_name || "";
+  const badgeEl = head.querySelector("[data-badge]");
+  if (badgeEl) paintBadge(badgeEl, "run", run.status);
+  const meta = shell.querySelector("[data-loop-meta]");
+  if (meta) meta.textContent = loopMetaText(run, now);
+  const pipe = shell.querySelector("[data-pipeline]");
+  if (pipe) {
+    for (const name of ["company-research", "website"]) {
+      const chip = pipe.querySelector(`[data-pipe="${name}"]`);
+      if (!chip) continue;
+      const lr = runsFor(snap, eng.id).find((r) => r.loop_name === name);
+      fillPipeChip(chip, lr, run.loop_name === name);
+    }
+  }
+  const adj = shell.querySelector("[data-adjusted]");
+  if (run.attempt > 0 || run.change_request_id) {
+    if (adj) {
+      const h = adj.querySelector("[data-adjusted-h]");
+      if (h) h.textContent = `⟳ attempt ${run.attempt} — orchestrator adjusted instructions`;
+      const body = adj.querySelector(".adjusted-body");
+      if (body) body.textContent = run.adjusted_instructions || "";
+    }
+  } else if (adj) {
+    adj.remove();
+  }
+  const timeline = shell.querySelector("[data-timeline]");
+  const iters = (snap.iterations || []).filter((i) => i.loop_run_id === run.id).sort((a, b) => a.n - b.n);
+  if (timeline) {
+    const existing = [...timeline.querySelectorAll("[data-iter-n]")];
+    const byN = new Map(existing.map((n) => [n.getAttribute("data-iter-n"), n]));
+    const keep = new Set(iters.map((i) => String(i.n)));
+    const pending = timeline.querySelector("[data-iter-pending]");
+    for (const it of iters) {
+      const row = byN.get(String(it.n));
+      if (row) fillIterRow(row, it, now);
+      else timeline.insertBefore(makeIterRow(it, now), pending);
+    }
+    for (const row of existing) {
+      if (!keep.has(row.getAttribute("data-iter-n"))) row.remove();
+    }
+    const wantPending = run.status === "running" && iters.length < 4;
+    if (wantPending) {
+      const n = iters.length + 1;
+      if (pending) {
+        const node = pending.querySelector(".it-node");
+        if (node) node.textContent = String(n);
+        const label = pending.querySelector(".faint");
+        if (label) label.textContent = `iteration ${n} in progress — executor working`;
+      } else {
+        timeline.append(makePendingIter(n));
+      }
+    } else if (pending) {
+      pending.remove();
+    }
+  }
   const gates = (snap.gate_checks || []).filter((g) => g.loop_run_id === run.id);
   const card = shell.querySelector("[data-gate-card]");
   if (!card) return false;
@@ -770,6 +939,41 @@ function syncLoop(shell, route, store, now) {
   }
   const passed = gates.filter((g) => g.passed === 1 || g.passed === true).length;
   if (sum) sum.textContent = `${passed}/${gates.length} passed · gate runs after reviewer approval`;
+  const scrapeCard = shell.querySelector("[data-scrape-card]");
+  const scrapes = (snap.scrapes || []).filter((s) => s.loop_run_id === run.id);
+  if (scrapeCard) {
+    const existingS = [...scrapeCard.querySelectorAll("[data-scrape]")];
+    const byUrl = new Map(existingS.map((n) => [n.getAttribute("data-scrape"), n]));
+    const keepS = new Set(scrapes.map((s) => s.url || s.id));
+    for (const s of scrapes) {
+      const key = s.url || s.id;
+      const row = byUrl.get(key);
+      if (row) fillScrapeRow(row, s, now);
+      else scrapeCard.append(makeScrapeRow(s, now));
+    }
+    for (const row of existingS) {
+      if (!keepS.has(row.getAttribute("data-scrape"))) row.remove();
+    }
+  }
+  const latest = Object.keys(snap.comparisons || {}).find((id) => {
+    const r = snap.loop_runs.find((x) => x.id === id);
+    return r && r.engagement_id === eng.id && r.loop_name === "company-research";
+  });
+  if (run.loop_name === "company-research") {
+    const main = shell.querySelector("main") || shell;
+    let cmpCard = shell.querySelector("[data-comparison]");
+    const superseded = shell.querySelector("[data-cmp-superseded]");
+    if (snap.comparisons?.[run.id]) {
+      if (superseded) superseded.remove();
+      if (cmpCard) fillComparisonCard(cmpCard, snap.comparisons[run.id]);
+      else main.append(renderComparison(snap.comparisons[run.id]));
+    } else if (latest && latest !== run.id) {
+      if (cmpCard) cmpCard.remove();
+      const msg = `comparison superseded by ${latest}`;
+      if (superseded) superseded.textContent = msg;
+      else main.append(el("div", { class: "card cmp-superseded", "data-cmp-superseded": "1" }, msg));
+    }
+  }
   return true;
 }
 

@@ -118,6 +118,182 @@ test("in-place patching keeps Runs cell, Failures card, Customers card, and Loop
   assert.match(gateRow.textContent, /pass/);
 });
 
+test("loop-detail full live sync updates each region in place", () => {
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "running", active_loop: "company-research", last_event_at: "2026-08-30T21:59:00Z", last_note: "", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      {
+        id: "run_a",
+        engagement_id: "eng_a",
+        loop_name: "company-research",
+        attempt: 0,
+        status: "running",
+        iteration_count: 1,
+        last_note: "",
+        last_event_at: "2026-08-30T21:50:00Z",
+        adjusted_instructions: null,
+        change_request_id: null,
+      },
+      {
+        id: "run_web",
+        engagement_id: "eng_a",
+        loop_name: "website",
+        attempt: 0,
+        status: "queued",
+        iteration_count: 0,
+        last_note: "",
+        last_event_at: "2026-08-30T21:00:00Z",
+        adjusted_instructions: null,
+        change_request_id: null,
+      },
+    ],
+    iterations: [
+      {
+        id: "it_1",
+        loop_run_id: "run_a",
+        n: 1,
+        reviewer_verdict: "revise",
+        reviewer_notes: "old notes",
+        executor_summary: "first draft",
+        pi_trace_ref: "pi://trace/aaa",
+        created_at: "2026-08-30T21:50:00Z",
+      },
+    ],
+    gate_checks: [{ id: "g1", loop_run_id: "run_a", check_name: "schema_valid", passed: 0, detail: "no", created_at: "2026-08-30T21:50:00Z" }],
+    scrapes: [{ id: "sc1", loop_run_id: "run_a", url: "https://alpha.example", http_status: 200, created_at: "2026-08-30T21:40:00Z" }],
+    approvals: [],
+    comparisons: {
+      run_a: {
+        columns: [{ label: "customer product" }, { label: "competitor" }],
+        rows: [{ cells: [{ value: "old", state: "valid" }, { value: "rival", state: "flagged" }] }],
+      },
+    },
+  };
+  const { root, store } = mount({ hash: "#/runs/eng_a/run_a", snap });
+  const shell = root.querySelector(".shell");
+  const head = root.querySelector("[data-loop-head]");
+  const meta = root.querySelector("[data-loop-meta]");
+  const pipe = root.querySelector("[data-pipeline]");
+  const chip = root.querySelector('[data-pipe="company-research"]');
+  const iter = root.querySelector('[data-iter-n="1"]');
+  const pending = root.querySelector("[data-iter-pending]");
+  const scrape = root.querySelector('[data-scrape="https://alpha.example"]');
+  const gate = root.querySelector("[data-gate='g1']");
+  const cmp = root.querySelector("[data-comparison]");
+  assert.ok(shell && head && meta && pipe && chip && iter && pending && scrape && gate && cmp);
+  assert.match(meta.textContent, /iteration 1\/4/);
+  assert.match(iter.textContent, /old notes/);
+  assert.match(pending.textContent, /iteration 2 in progress/);
+
+  store.applyPatch({
+    entities: {
+      loop_runs: [{ ...snap.loop_runs[0], status: "gate_passed", iteration_count: 2, last_event_at: "2026-08-30T21:59:00Z" }],
+      iterations: [
+        { ...snap.iterations[0], reviewer_verdict: "approve", reviewer_notes: "looks good", pi_trace_ref: "pi://trace/bbb" },
+        {
+          id: "it_2",
+          loop_run_id: "run_a",
+          n: 2,
+          reviewer_verdict: "approve",
+          reviewer_notes: "second",
+          executor_summary: "round 2",
+          created_at: "2026-08-30T21:55:00Z",
+        },
+      ],
+      gate_checks: [{ ...snap.gate_checks[0], passed: 1 }, { id: "g2", loop_run_id: "run_a", check_name: "competitors≥5", passed: 1, detail: "ok", created_at: "2026-08-30T21:59:00Z" }],
+      scrapes: [
+        { ...snap.scrapes[0], http_status: 404 },
+        { id: "sc2", loop_run_id: "run_a", url: "https://beta.example", http_status: 200, created_at: "2026-08-30T21:58:00Z" },
+      ],
+      comparisons: {
+        run_a: {
+          columns: [{ label: "customer product" }, { label: "competitor" }],
+          rows: [{ cells: [{ value: "new", state: "valid" }, { value: "rival", state: "valid" }] }],
+        },
+      },
+    },
+  });
+  assert.ok(shell.isSameNode(root.querySelector(".shell")));
+  assert.ok(head.isSameNode(root.querySelector("[data-loop-head]")));
+  assert.ok(meta.isSameNode(root.querySelector("[data-loop-meta]")));
+  assert.ok(pipe.isSameNode(root.querySelector("[data-pipeline]")));
+  assert.ok(chip.isSameNode(root.querySelector('[data-pipe="company-research"]')));
+  assert.ok(iter.isSameNode(root.querySelector('[data-iter-n="1"]')));
+  assert.ok(scrape.isSameNode(root.querySelector('[data-scrape="https://alpha.example"]')));
+  assert.ok(gate.isSameNode(root.querySelector("[data-gate='g1']")));
+  assert.ok(cmp.isSameNode(root.querySelector("[data-comparison]")));
+  assert.match(head.textContent, /gate_passed|passed/);
+  assert.match(meta.textContent, /iteration 2\/4/);
+  assert.match(iter.textContent, /looks good/);
+  assert.match(iter.textContent, /pi:\/\/trace\/bbb/);
+  assert.ok(root.querySelector('[data-iter-n="2"]'));
+  assert.equal(root.querySelector("[data-iter-pending]"), null);
+  assert.match(scrape.textContent, /404/);
+  assert.ok(root.querySelector('[data-scrape="https://beta.example"]'));
+  assert.match(gate.textContent, /pass/);
+  assert.match(root.querySelector("[data-gate='g2']").textContent, /competitors/);
+  assert.match(cmp.textContent, /new/);
+});
+
+test("customers full live sync adds live link and kb file in place", () => {
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      {
+        id: "eng_a",
+        customer_name: "Alpha",
+        status: "awaiting_approval",
+        active_loop: "website",
+        last_event_at: "2026-08-30T21:59:00Z",
+        last_note: "",
+        kb_files: [{ path: "BRIEF.md", updated: "2026-08-30T20:00:00Z" }],
+        live_url: null,
+        repo_url: "https://git.example/alpha",
+      },
+    ],
+    loop_runs: [],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const { root, store } = mount({ hash: "#/customers", snap });
+  const card = root.querySelector("[data-customer='eng_a']");
+  const kb = root.querySelector('[data-kb-file="BRIEF.md"]');
+  assert.ok(card);
+  assert.ok(kb);
+  assert.equal(root.querySelector("[data-live-link]"), null);
+  store.applyPatch({
+    entities: {
+      engagements: [
+        {
+          ...snap.engagements[0],
+          live_url: "https://alpha.example.workers.dev",
+          kb_files: [
+            { path: "BRIEF.md", updated: "2026-08-30T21:00:00Z" },
+            { path: "company/OVERVIEW.md", updated: "2026-08-30T21:30:00Z" },
+          ],
+        },
+      ],
+    },
+  });
+  assert.ok(card.isSameNode(root.querySelector("[data-customer='eng_a']")));
+  assert.ok(kb.isSameNode(root.querySelector('[data-kb-file="BRIEF.md"]')));
+  const live = root.querySelector("[data-live-link]");
+  assert.ok(live);
+  assert.equal(live.getAttribute("href"), "https://alpha.example.workers.dev");
+  assert.match(live.textContent, /live/);
+  assert.ok(root.querySelector('[data-kb-file="company/OVERVIEW.md"]'));
+});
+
 test("flashed row ids clear after 800ms and CSS eases the background out", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
   const snap = {
