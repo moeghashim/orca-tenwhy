@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { parseCustomerHash, renderCustomerApp } from "./src/customer/app.js";
-import { loadingProgress } from "./src/customer/progress.js";
+import { deriveStaleWebsiteRunIds, loadingProgress } from "./src/customer/progress.js";
 import { createCustomerSession } from "./src/customer/session.js";
 
 function fixtureEvents() {
@@ -522,6 +522,51 @@ test("reload mid-rebuild does not mark step 5 done until the new website run's g
   );
   await session.paint();
   assert.equal(root.querySelector("[data-step='5']").classList.contains("done"), true);
+});
+
+test("retry website run after a change-request is live and advances steps", () => {
+  const loop_runs = [
+    { id: "run_res", loop_name: "company-research", started_at: "2026-08-30T20:00:00Z" },
+    { id: "run_web", loop_name: "website", started_at: "2026-08-30T20:10:00Z" },
+    { id: "run_web2", loop_name: "website", started_at: "2026-08-30T21:00:00Z", attempt: 0 },
+    { id: "run_web3", loop_name: "website", started_at: "2026-08-30T21:10:00Z", attempt: 1 },
+  ];
+  const events = [
+    { id: 1, kind: "loop_run.started", loop_run_id: "run_res", payload: { loopName: "company-research" }, created_at: "2026-08-30T20:00:00Z" },
+    { id: 2, kind: "iteration.recorded", loop_run_id: "run_res", payload: { n: 1 }, created_at: "2026-08-30T20:05:00Z" },
+    { id: 3, kind: "gate.checked", loop_run_id: "run_res", payload: { passed: true }, created_at: "2026-08-30T20:06:00Z" },
+    { id: 4, kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1 }, created_at: "2026-08-30T20:15:00Z" },
+    { id: 5, kind: "gate.checked", loop_run_id: "run_web", payload: { passed: true }, created_at: "2026-08-30T20:20:00Z" },
+    { id: 6, kind: "engagement.change_requested", loop_run_id: "run_web2", payload: { runId: "run_web2" }, created_at: "2026-08-30T21:00:00Z" },
+    { id: 7, kind: "approval.processed", payload: { action: "request_changes" }, created_at: "2026-08-30T21:00:00Z" },
+    { id: 8, kind: "iteration.recorded", loop_run_id: "run_web2", payload: { n: 1 }, created_at: "2026-08-30T21:01:00Z" },
+    { id: 9, kind: "gate.checked", loop_run_id: "run_web2", payload: { passed: false }, created_at: "2026-08-30T21:02:00Z" },
+  ];
+  const stale = deriveStaleWebsiteRunIds({ events, loop_runs });
+  assert.ok(stale.has("run_web"));
+  assert.equal(stale.has("run_web2"), false);
+  assert.equal(stale.has("run_web3"), false);
+  const afterFail = loadingProgress({ events, loop_runs });
+  assert.equal(afterFail.completed, 4, afterFail);
+  assert.equal(afterFail.hold, true);
+  events.push({
+    id: 10,
+    kind: "iteration.recorded",
+    loop_run_id: "run_web3",
+    payload: { n: 1 },
+    created_at: "2026-08-30T21:11:00Z",
+  });
+  assert.equal(loadingProgress({ events, loop_runs }).completed, 4);
+  events.push({
+    id: 11,
+    kind: "gate.checked",
+    loop_run_id: "run_web3",
+    payload: { passed: true },
+    created_at: "2026-08-30T21:12:00Z",
+  });
+  const afterRetry = loadingProgress({ events, loop_runs });
+  assert.equal(afterRetry.completed, 5, afterRetry);
+  assert.equal(afterRetry.hold, false);
 });
 
 test("approve and request-changes treat only 2xx as success", async () => {

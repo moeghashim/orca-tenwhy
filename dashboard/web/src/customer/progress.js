@@ -26,36 +26,52 @@ function payloadPassed(p) {
   return p.passed === true || p.passed === 1 || p.allPassed === true;
 }
 
-/** Website runs whose started_at precedes the latest change-request cutoff. */
-export function deriveStaleWebsiteRunIds({ events = [], loop_runs = [], approvals = [] } = {}) {
-  const changeEvents = (events || []).filter((e) => e.kind === "engagement.change_requested");
-  const reqs = (approvals || []).filter((a) => a.action === "request_changes");
-  if (!changeEvents.length && !reqs.length) return new Set();
-
-  let keepId = null;
-  let cutoff = null;
-  if (changeEvents.length) {
-    const latest = changeEvents.reduce((a, b) => ((Number(a.id) || 0) >= (Number(b.id) || 0) ? a : b));
-    keepId = latest.loop_run_id || latest.payload?.runId || null;
-    cutoff = latest.created_at || null;
-  }
-  if (reqs.length) {
-    const latestA = reqs.reduce((a, b) => (String(a.created_at || "") > String(b.created_at || "") ? a : b));
-    if (!cutoff || String(latestA.created_at || "") >= String(cutoff)) {
-      cutoff = latestA.created_at || cutoff;
-      if (!changeEvents.length) keepId = null;
+function changeRequestCutoff(events = [], approvals = []) {
+  const cuts = [];
+  for (const e of events || []) {
+    if (e.kind === "engagement.change_requested") {
+      cuts.push({ at: e.created_at || "", id: Number(e.id) || 0 });
+    } else if (e.kind === "approval.processed" && e.payload?.action === "request_changes") {
+      cuts.push({ at: e.created_at || "", id: Number(e.id) || 0 });
     }
   }
+  for (const a of approvals || []) {
+    if (a.action === "request_changes") cuts.push({ at: a.created_at || "", id: 0 });
+  }
+  if (!cuts.length) return null;
+  return cuts.reduce((a, b) => {
+    const cmp = String(a.at).localeCompare(String(b.at));
+    if (cmp !== 0) return cmp > 0 ? a : b;
+    return a.id >= b.id ? a : b;
+  });
+}
 
+function websiteRunStart(run, events) {
+  if (run?.started_at) return { at: run.started_at, id: Infinity };
+  let at = null;
+  let id = Infinity;
+  for (const e of events || []) {
+    if (e.loop_run_id !== run.id) continue;
+    if (e.created_at && (at == null || String(e.created_at) < String(at))) at = e.created_at;
+    const eid = Number(e.id) || 0;
+    if (eid && eid < id) id = eid;
+  }
+  return { at, id: id === Infinity ? 0 : id };
+}
+
+/** Website runs whose started_at (or first event) precedes the latest change-request cutoff. */
+export function deriveStaleWebsiteRunIds({ events = [], loop_runs = [], approvals = [] } = {}) {
+  const cutoff = changeRequestCutoff(events, approvals);
+  if (!cutoff) return new Set();
   const ids = new Set();
   for (const r of loop_runs || []) {
     if (r.loop_name !== "website") continue;
-    if (keepId && r.id === keepId) continue;
-    if (keepId) {
-      ids.add(r.id);
+    const start = websiteRunStart(r, events);
+    if (start.at && cutoff.at) {
+      if (String(start.at) < String(cutoff.at)) ids.add(r.id);
       continue;
     }
-    if (!r.started_at || !cutoff || r.started_at <= cutoff) ids.add(r.id);
+    if (!start.at && cutoff.id && start.id && start.id < cutoff.id) ids.add(r.id);
   }
   return ids;
 }

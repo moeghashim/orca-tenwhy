@@ -126,6 +126,8 @@ P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-
 
 P7-fix4 (Codex `P7 issues #r3b`): `node --test "dashboard/server/*.test.mjs" dashboard/web/customer.test.mjs` → `tests 25` `pass 25` `fail 0` `exit=0`. Stale website runs derived from `engagement.change_requested` / `approvals.request_changes` on GET reload; awaiting_approval SSE patch fetches `/research` and `/preview-manifest` after the patch and before results DOM. `_pending_`
 
+P7-fix4 item 10 (Codex `P7 issues #r4`): `node --test "dashboard/server/*.test.mjs" dashboard/web/customer.test.mjs` → `✔ retry website run after a change-request is live and advances steps` `tests 26` `pass 26` `fail 0` `exit=0`. Stale = started_at/first event before the latest `engagement.change_requested` / `approval.processed(request_changes)` cutoff; attempt 1 retries stay live. `_pending_`
+
 ## Final acceptance (§12)
 
 | Item | Status | Evidence |
