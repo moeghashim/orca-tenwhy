@@ -1,0 +1,14 @@
+# Follow-up brief — round 3 (Codex `REVIEWED: P5 issues #r3` + `P6 issues #r3`, 2026-08-30) — do after Phase 7; commits `P5-fix3: …` / `P6-fix3: …`, each with a failing-then-passing test
+
+## P5 (website gate sandbox)
+
+1. **Read allowlist for build and preview profiles** (`system/gates/sandbox/build.sb:8`, `preview.sb`): remove the global `(allow file-read*)`. Allow reads only for: the temp tree, the npm cache, the realpath of the node binary and its Cellar/lib directory, `/usr/lib`, `/usr/share`, `/System/Library`, `/Library/Preferences/.GlobalPreferences.plist` (if node needs it), `/private/etc/localtime`, `/dev/null`, `/dev/urandom`, `/dev/tty`, and `(allow file-read-metadata)` broadly. Verify with a build that reads `/etc/hosts` and `/private/etc/passwd` through Vite (`/@fs/private/etc/passwd?raw` and `import "/etc/hosts?raw"`) → build fails **and** no file content leaks; keep iterating the allowlist until `pass` still builds. Lighthouse keeps the orchestrator-verified allow-default+denials profile.
+2. **Fixture must prove sandbox denial** (`fixtures/website/fail_build_absolute_import/website/src/main.js`): use a form Vite can actually serve — `import txt from "/@fs/private/etc/passwd?raw"` (and a second entry importing `/etc/hosts?raw` via an absolute path) — and assert in the test that (a) the same fixture **builds successfully when the sandbox is disabled** (`TENWHY_DEV=1 TENWHY_GATE_NO_SANDBOX=1`, so the failure is attributable to the sandbox, not to Vite resolution) and (b) under the sandbox the build fails or `dist/` contains no line of `/etc/passwd`/`/etc/hosts`.
+3. **IMAGE_BRIEF through the shared containment routine** (`website_gate.py:876`): IMAGE_BRIEF paths must go through the same `resolve_in_dist` (percent-decode → reject → normpath → realpath containment) as HTML/CSS references, then the presence + reference checks. Test: an IMAGE_BRIEF path `/images/../../x.svg` and a symlinked placeholder are rejected.
+
+## P6 (ops dashboard)
+
+4. **Loop-detail full live sync** (`dashboard/web/src/app.js:752`): on patches for the viewed run/engagement, update in place: header status badge + meta line (iteration/attempt/last event), pipeline strip states, iteration timeline (append new iterations, update verdict/notes/trace of existing ones, in-progress dashed node), scrape provenance rows, gate rows + summary, and the comparison card (add/replace/supersede). Test: apply patches for each entity kind and assert node identity of the shell + updated text for each region.
+5. **Customers full live sync** (`app.js:677`): patch `kb_files` (list + relative times), `repo_url`, `live_url` links in place (add the `live ↗` link when it appears). Test: patch adds `live_url` and a new kb file → card node identity kept, link and file rendered.
+
+Finish with `DONE fix3 <hash…>` — only hashes in `git log`.
