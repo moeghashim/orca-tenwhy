@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import { acquireDaemonLock, releaseDaemonLock } from "./daemon_lock.mjs";
 import { runDaemon } from "./orchestrator.mjs";
 
@@ -316,5 +317,87 @@ test("legacy text lock with a live pid is refused", () => {
   assert.equal(got.ok, false);
   assert.equal(got.pid, process.pid);
   assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(process.pid));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("six children racing a legacy text lock: exactly one acquires", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const goPath = path.join(dir, "go");
+  const dead = await plantDeadLock(path.join(dir, "planter.lock"));
+  fs.writeFileSync(lockPath, `${dead}\n`);
+  const src = racerSrc(lockPath, goPath);
+  const kids = Array.from({ length: 6 }, () => spawnScript(src));
+  await new Promise((r) => setTimeout(r, 40));
+  fs.writeFileSync(goPath, "1");
+  const exits = await Promise.all(kids.map(async (c) => ({ pid: c.pid, ...(await waitExit(c)) })));
+  const codes = exits.map((e) => e.code).sort((x, y) => x - y);
+  assert.deepEqual(codes, [0, 3, 3, 3, 3, 3], JSON.stringify(exits));
+  const winner = exits.find((e) => e.code === 0);
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  const db = new DatabaseSync(lockPath);
+  try {
+    const row = db.prepare("SELECT pid FROM holder WHERE id = 1").get();
+    assert.equal(row.pid, winner.pid);
+  } finally {
+    db.close();
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("held migration lock blocks legacy unlink until released", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const migratePath = `${lockPath}.migrate`;
+  const heldPath = path.join(dir, "held");
+  const dead = await plantDeadLock(path.join(dir, "planter.lock"));
+  fs.writeFileSync(lockPath, `${dead}\n`);
+  const src = `
+    import fs from "node:fs";
+    import { DatabaseSync } from "node:sqlite";
+    const db = new DatabaseSync(${JSON.stringify(migratePath)}, { timeout: 5000 });
+    db.exec("BEGIN IMMEDIATE");
+    db.exec("CREATE TABLE IF NOT EXISTS migrate (id INTEGER PRIMARY KEY CHECK (id = 1))");
+    fs.writeFileSync(${JSON.stringify(heldPath)}, "1");
+    await new Promise((r) => setTimeout(r, 1000));
+    db.exec("COMMIT");
+    db.close();
+  `;
+  const child = spawnScript(src);
+  t.after(() => {
+    try {
+      process.kill(child.pid, "SIGKILL");
+    } catch {
+      /* */
+    }
+  });
+  const childExit = waitExit(child);
+  await waitFor(() => fs.existsSync(heldPath));
+  const acquirer = spawnScript(`
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const got = acquireDaemonLock(${JSON.stringify(lockPath)});
+    if (!got.ok) process.exit(3);
+    process.exit(0);
+  `);
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(dead));
+  const { code: holderCode } = await childExit;
+  assert.equal(holderCode, 0);
+  const { code } = await waitExit(acquirer);
+  assert.equal(code, 0);
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("empty lock file is treated as SQLite, not legacy", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  fs.writeFileSync(lockPath, "");
+  assert.equal(fs.statSync(lockPath).size, 0);
+  const got = acquireDaemonLock(lockPath);
+  assert.equal(got.ok, true);
+  assert.equal(fs.existsSync(lockPath), true);
+  assert.equal(sqliteHeader(lockPath), "SQLite format 3");
+  releaseDaemonLock(lockPath);
   fs.rmSync(dir, { recursive: true, force: true });
 });

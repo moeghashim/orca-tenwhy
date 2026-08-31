@@ -96,19 +96,70 @@ function acquireSqlite(lockPath, pid, kill) {
   }
 }
 
+function readableLegacyPid(lockPath) {
+  try {
+    const str = fs.readFileSync(lockPath, "utf8");
+    if (/^\d+\s*$/.test(str)) return parsePid(str);
+  } catch {
+    /* */
+  }
+  return null;
+}
+
 function migrateLegacyTextLock(lockPath, pid, kill) {
   // One-time path for plain-text pid locks written before this SQLite-backed lock.
-  let textPid = null;
+  // Serialized by ${lockPath}.migrate (stable SQLite file, never unlinked).
+  const migratePath = `${lockPath}.migrate`;
+  const db = openLockDb(migratePath);
+  let begun = false;
   try {
-    textPid = parsePid(fs.readFileSync(lockPath, "utf8"));
-  } catch {
-    return { ok: false, pid: null };
-  }
-  if (textPid && isAlive(textPid, kill)) return { ok: false, pid: textPid };
-  try {
+    db.exec("BEGIN IMMEDIATE");
+    begun = true;
+    db.exec("CREATE TABLE IF NOT EXISTS migrate (id INTEGER PRIMARY KEY CHECK (id = 1))");
+    let raw;
+    try {
+      raw = fs.readFileSync(lockPath);
+    } catch {
+      db.exec("ROLLBACK");
+      begun = false;
+      return { ok: false, pid: null };
+    }
+    if (raw.length === 0 || raw.subarray(0, 15).toString() === "SQLite format 3") {
+      db.exec("ROLLBACK");
+      begun = false;
+      return { ok: false, pid: null };
+    }
+    const str = raw.toString("utf8");
+    if (!/^\d+\s*$/.test(str)) {
+      db.exec("ROLLBACK");
+      begun = false;
+      return { ok: false, pid: null };
+    }
+    const textPid = parsePid(str);
+    if (textPid && isAlive(textPid, kill)) {
+      db.exec("ROLLBACK");
+      begun = false;
+      return { ok: false, pid: textPid };
+    }
     fs.unlinkSync(lockPath);
-  } catch {
-    return { ok: false, pid: null };
+    db.exec("COMMIT");
+    begun = false;
+  } catch (err) {
+    if (begun) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        /* */
+      }
+    }
+    if (isBusy(err)) return { ok: false, pid: readableLegacyPid(lockPath) };
+    throw err;
+  } finally {
+    try {
+      db.close();
+    } catch {
+      /* */
+    }
   }
   try {
     return acquireSqlite(lockPath, pid, kill);
