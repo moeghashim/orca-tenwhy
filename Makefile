@@ -7,7 +7,8 @@ verify:
 	system/tools/.venv/bin/python system/tools/test_scrape.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_research_gate.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_website_gate.py
-	node --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs"
+	node --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
+	npx vite build --config dashboard/web/vite.config.js
 
 # Same as verify, but skip website Lighthouse (gate check 5). The fail_lighthouse
 # fixture still runs under `make verify`.
@@ -17,4 +18,5 @@ verify-fast:
 	system/tools/.venv/bin/python system/tools/test_scrape.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_research_gate.py
 	WEBSITE_GATE_SKIP_LIGHTHOUSE=1 system/tools/.venv/bin/python -m unittest system/gates/test_website_gate.py
-	node --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs"
+	node --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
+	npx vite build --config dashboard/web/vite.config.js

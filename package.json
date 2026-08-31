@@ -8,10 +8,16 @@
   },
   "description": "tenwhy graph-of-loops system repo",
   "scripts": {
-    "dashboard": "node dashboard/server/server.mjs",
+    "dashboard": "vite build --config dashboard/web/vite.config.js && node dashboard/server/server.mjs",
     "dashboard:seed": "node dashboard/server/seed.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1",
+    "vite": "^8.2.2"
   }
 }
