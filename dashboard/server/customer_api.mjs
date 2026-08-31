@@ -143,6 +143,71 @@ export function previewDist(db, engagementId, repoRoot) {
   return dist;
 }
 
+function hasDotDotSegment(p) {
+  return String(p).split(/[\\/]/).includes("..");
+}
+
+function decodePathOnce(p) {
+  let out = "";
+  for (let i = 0; i < p.length; ) {
+    if (p[i] === "%") {
+      const hex = p.slice(i + 1, i + 3);
+      if (!/^[0-9a-fA-F]{2}$/.test(hex)) return null;
+      out += String.fromCharCode(parseInt(hex, 16));
+      i += 3;
+    } else {
+      out += p[i];
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/** Decode → reject .. / encoded separators → normpath → realpath containment inside dist/. */
+export function resolvePreviewPath(distDir, rest) {
+  if (!distDir) return null;
+  let distReal;
+  try {
+    distReal = fs.realpathSync(distDir);
+  } catch {
+    return null;
+  }
+  let rel = String(rest || "").replace(/^\/+/, "") || "index.html";
+  const lower = rel.toLowerCase();
+  if (rel.includes("\0") || rel.includes("\\") || lower.includes("%00") || lower.includes("%2f") || lower.includes("%5c")) {
+    return null;
+  }
+  if (hasDotDotSegment(rel)) return null;
+  const decoded = decodePathOnce(rel);
+  if (decoded == null || decoded.includes("\0") || decoded.includes("\\") || hasDotDotSegment(decoded)) return null;
+  if (/%2f|%5c/i.test(decoded)) return null;
+  const joined = path.normalize(path.join(distReal, decoded));
+  const prefix = distReal.endsWith(path.sep) ? distReal : distReal + path.sep;
+  if (joined !== distReal && !joined.startsWith(prefix)) return null;
+  const candidates = [];
+  try {
+    const st = fs.lstatSync(joined);
+    if (st.isDirectory()) candidates.push(path.join(joined, "index.html"));
+    else candidates.push(joined);
+  } catch {
+    if (!path.extname(joined)) {
+      candidates.push(path.join(joined, "index.html"), `${joined}.html`);
+    } else {
+      candidates.push(joined);
+    }
+  }
+  for (const c of candidates) {
+    try {
+      const real = fs.realpathSync(c);
+      if (real !== distReal && !real.startsWith(prefix)) continue;
+      if (fs.statSync(real).isFile()) return real;
+    } catch {
+      /* */
+    }
+  }
+  return null;
+}
+
 export function previewManifest(distDir) {
   const pages = [];
   function walk(dir, rel = "") {

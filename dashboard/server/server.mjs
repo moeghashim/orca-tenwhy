@@ -9,6 +9,7 @@ import {
   previewDist,
   previewManifest,
   researchPayload,
+  resolvePreviewPath,
   spawnLoopctlNew,
   writeClientAllowed,
 } from "./customer_api.mjs";
@@ -217,27 +218,24 @@ export function createDashboardServer({
         .catch((err) => sendJson(res, 502, { error: String(err.message || err) }));
       return;
     }
-    const previewGet = req.method === "GET" && url.pathname.match(/^\/preview\/([^/]+)(?:\/(.*))?$/);
+    const rawPath = (req.url || "").split("?")[0];
+    const previewGet = req.method === "GET" && rawPath.match(/^\/preview\/([^/]+)(?:\/(.*))?$/);
     if (previewGet) {
-      const id = decodeURIComponent(previewGet[1]);
-      const rest = decodeURIComponent(previewGet[2] || "");
+      let id;
+      try {
+        id = decodeURIComponent(previewGet[1]);
+      } catch {
+        sendJson(res, 404, { error: "not found" });
+        return;
+      }
+      const rest = previewGet[2] || "";
       const dist = previewDist(db, id, repoRoot);
       if (!dist) {
         sendJson(res, 404, { error: "not found" });
         return;
       }
-      const distReal = path.resolve(dist);
-      let rel = rest.replace(/^\/+/, "") || "index.html";
-      const abs = path.normalize(path.join(distReal, rel));
-      if (!abs.startsWith(distReal)) {
-        res.writeHead(403).end();
-        return;
-      }
-      let file = abs;
-      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-        file = path.join(abs, "index.html");
-      }
-      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      const file = resolvePreviewPath(dist, rest);
+      if (!file) {
         sendJson(res, 404, { error: "not found" });
         return;
       }

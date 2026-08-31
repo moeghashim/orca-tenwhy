@@ -3,6 +3,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import { parseCustomerHash, renderCustomerApp } from "./src/customer/app.js";
 import { loadingProgress } from "./src/customer/progress.js";
+import { createCustomerSession } from "./src/customer/session.js";
 
 function fixtureEvents() {
   const loop_runs = [
@@ -138,4 +139,150 @@ test("results launching, 409 copy, and rebuilding loading copy", () => {
   });
   assert.match(root.textContent, /Rebuilding with your notes/);
   assert.match(root.textContent, /rebuilding with your notes/);
+});
+
+class FakeEventSource {
+  constructor(url) {
+    this.url = url;
+    this.listeners = {};
+    FakeEventSource.last = this;
+  }
+  addEventListener(type, fn) {
+    (this.listeners[type] ||= []).push(fn);
+  }
+  close() {}
+  emit(data) {
+    for (const fn of this.listeners.patch || []) fn({ data: JSON.stringify(data) });
+  }
+}
+
+function jsonRes(body, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    json: async () => body,
+  };
+}
+
+test("loading EventSource patches advance steps and navigate on awaiting_approval", async () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  let hash = "#/e/eng_x";
+  const loop_runs = [
+    { id: "run_res", loop_name: "company-research" },
+    { id: "run_web", loop_name: "website" },
+  ];
+  const session = createCustomerSession({
+    EventSource: FakeEventSource,
+    getHash: () => hash,
+    setHash: (h) => {
+      hash = h;
+    },
+    fetch: async (url) => {
+      if (String(url).includes("/research")) {
+        return jsonRes({ research: { company: { summary: "x" } }, comparison: { columns: [], rows: [] } });
+      }
+      if (String(url).includes("preview-manifest")) return jsonRes({ pages: [] });
+      return jsonRes({
+        engagement: { id: "eng_x", status: "running" },
+        events: [],
+        loop_runs,
+        lastEventId: 0,
+      });
+    },
+    render: (state) => {
+      renderCustomerApp(root, {
+        hash,
+        engagement: state.engagement,
+        events: state.events,
+        loop_runs: state.loop_runs,
+      });
+    },
+  });
+  await session.paint();
+  assert.match(FakeEventSource.last.url, /engagement=eng_x/);
+  const events = [
+    { id: 1, kind: "loop_run.started", loop_run_id: "run_res", payload: { loopName: "company-research" } },
+    { id: 2, kind: "iteration.recorded", loop_run_id: "run_res", payload: { n: 1 } },
+    { id: 3, kind: "gate.checked", loop_run_id: "run_res", payload: { passed: true } },
+    { id: 4, kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1 } },
+    { id: 5, kind: "gate.checked", loop_run_id: "run_web", payload: { passed: true } },
+  ];
+  for (const ev of events) FakeEventSource.last.emit(ev);
+  assert.equal(loadingProgress({ events: session.state.events, loop_runs }).completed, 5);
+  assert.equal(root.querySelectorAll("[data-step].done").length, 5);
+  FakeEventSource.last.emit({
+    id: 6,
+    kind: "engagement.awaiting_approval",
+    entities: { engagements: [{ id: "eng_x", status: "awaiting_approval" }] },
+  });
+  assert.equal(hash, "#/e/eng_x/results");
+});
+
+test("direct results route fetches research and preview-manifest before render", async () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  let hash = "#/e/eng_0143/results";
+  const fetched = [];
+  const session = createCustomerSession({
+    EventSource: FakeEventSource,
+    getHash: () => hash,
+    setHash: (h) => {
+      hash = h;
+    },
+    fetch: async (url) => {
+      fetched.push(String(url));
+      if (String(url).includes("/research")) {
+        return jsonRes({
+          research: {
+            company: { summary: "Neighborhood cafe" },
+            competitors: [{ name: "Nord", url: "https://nord.example", summary: "rival", products: [] }],
+            enhancement_ideas: [{ idea: "Calm lunches" }],
+          },
+          comparison: { columns: [{ label: "customer product" }], rows: [{ cells: [{ value: "Drip", state: "valid" }] }] },
+        });
+      }
+      if (String(url).includes("preview-manifest")) {
+        return jsonRes({ pages: [{ path: "/index.html", title: "Harbor & Finch" }] });
+      }
+      return jsonRes({
+        engagement: { id: "eng_0143", status: "awaiting_approval" },
+        events: [],
+        loop_runs: [],
+        lastEventId: 0,
+      });
+    },
+    render: (state) => {
+      renderCustomerApp(root, {
+        hash,
+        engagement: state.engagement,
+        research: state.research,
+        comparison: state.comparison,
+        pages: state.pages,
+        tab: "research",
+      });
+    },
+  });
+  await session.paint();
+  assert.ok(fetched.some((u) => u.includes("/api/engagements/eng_0143/research")));
+  assert.ok(fetched.some((u) => u.includes("/preview-manifest")));
+  assert.match(root.textContent, /Neighborhood cafe/);
+  assert.match(root.textContent, /Harbor & Finch|Nord/);
+  assert.ok(root.querySelector("[data-approve]"));
+  session.state.tab = "design";
+  hash = "#/e/eng_0143/results";
+  await session.paint();
+  renderCustomerApp(root, {
+    hash,
+    engagement: session.state.engagement,
+    research: session.state.research,
+    comparison: session.state.comparison,
+    pages: session.state.pages,
+    tab: "design",
+  });
+  assert.match(root.textContent, /Harbor & Finch/);
 });

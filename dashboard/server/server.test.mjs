@@ -383,6 +383,52 @@ test("seeded awaiting_approval engagement serves research and preview HTML", asy
   assert.equal(html.headers["x-frame-options"], "SAMEORIGIN");
 });
 
+function previewGet(port, pathname) {
+  return new Promise((resolve, reject) => {
+    http
+      .get(`http://127.0.0.1:${port}${pathname}`, (res) => {
+        let body = "";
+        res.on("data", (c) => {
+          body += c;
+        });
+        res.on("end", () => resolve({ status: res.statusCode, body }));
+      })
+      .on("error", reject);
+  });
+}
+
+test("preview path containment rejects traversal, sibling prefix, and symlink escape", async (t) => {
+  const dir = tmpDir();
+  const dbPath = path.join(dir, "t.db");
+  seedDemo({ dbPath, repoRoot: dir });
+  const dist = path.join(dir, "state/customers/harbor-finch/website/dist");
+  const evil = path.join(dir, "state/customers/harbor-finch/website/dist-evil");
+  fs.mkdirSync(evil, { recursive: true });
+  fs.writeFileSync(path.join(evil, "pwn.html"), "PWNED", "utf8");
+  const outside = path.join(dir, "outside.txt");
+  fs.writeFileSync(outside, "SECRET", "utf8");
+  fs.symlinkSync(outside, path.join(dist, "escape.txt"));
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: dir });
+  t.after(() => {
+    close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const ok = await previewGet(port, "/preview/eng_0143/index.html");
+  assert.equal(ok.status, 200);
+  assert.match(ok.body, /Harbor/);
+  const encoded = await previewGet(port, "/preview/eng_0143/%2e%2e/dist-evil/pwn.html");
+  assert.equal(encoded.status, 404);
+  assert.doesNotMatch(encoded.body || "", /PWNED/);
+  const mixed = await previewGet(port, "/preview/eng_0143/..%2fdist-evil/pwn.html");
+  assert.equal(mixed.status, 404);
+  const sibling = await previewGet(port, "/preview/eng_0143/../dist-evil/pwn.html");
+  assert.equal(sibling.status, 404);
+  const link = await previewGet(port, "/preview/eng_0143/escape.txt");
+  assert.equal(link.status, 404);
+  assert.doesNotMatch(link.body || "", /SECRET/);
+});
+
 const LOOP_CONFIG = {
   caps: { iteration_cap: 4, retry_cap: 2 },
   loops: {
