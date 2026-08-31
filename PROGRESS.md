@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(none open — round 6 `6487d24` `feb6ff4` `a6ef53b` landed; `REVIEWED: P3 issues #r7` (Codex: value-based log redaction, prepare log fields, race-free daemon lock) → round 7 `f175ada` `ad1cc23` `862ee55` → `REVIEWED: P3 issues #r8` (4 items) → `build/briefs/fix-round-8.md` dispatched)_
+_(open: `REVIEWED: P3 issues #r12` — Codex: `daemon_lock.mjs:75` stale takeover can still rename a winner's freshly linked lock → serialize stale reclamation with a separate atomic reaper lock → `build/briefs/fix-round-9.md`. Closed this session: P5 gate hotfixes `b912281` `b0b1dd1` `e2075bb` `ebc7e1a` → `REVIEWED: P5 ok #r12`; round 8 `9c4f47d` `8292673` `4d627ce` `8b317d0` reviewed #r12 with the one item above.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
