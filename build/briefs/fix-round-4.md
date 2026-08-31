@@ -14,4 +14,9 @@
 6. **Stale website runs survive reload** (`dashboard/web/src/customer/session.js:151`): on reload during a change-request rebuild, derive the stale-run set from server data (every `website` loop run whose `started_at` precedes the latest `approvals.request_changes` / `engagement.change_requested` event) instead of relying on in-memory `staleWebsiteRunIds`, so the old passed gate cannot mark step 5. Test: reload (fresh store from `GET /api/engagements/:id`) mid-rebuild → step 5 not done until the **new** run's all-pass `gate.checked`.
 7. **Prove patch-triggered fetch** (`dashboard/web/customer.test.mjs:314`): start the test on a `running` engagement with a fetch stub that records calls; apply the `awaiting_approval` SSE patch; assert `/research` and `/preview-manifest` were fetched **after** the patch and before the results DOM renders (no results content in the DOM prior to the fetch resolving).
 
+## Round-4 items 1–2 — Codex `REVIEWED: P5 issues #r5` (P6 ok #r5), 2026-08-31; commits `P5-fix4: …`
+
+8. **Narrow the Homebrew grant** (`build.sb:19`, `preview.sb:16`): replace `__BREW_PREFIX__` (all of `/opt/homebrew`) with the realpath of the node binary's Cellar directory (`$(dirname $(dirname $(realpath /opt/homebrew/bin/node)))`, e.g. `/opt/homebrew/Cellar/node/24.x.y`) plus `/opt/homebrew/lib/node_modules` only if the gate needs it (it should not — vite is installed in the temp tree). Test: the generated profile contains no bare `/opt/homebrew` subpath grant and `pass` still builds.
+9. **Real-build denial coverage for `$HOME`** (`test_website_gate.py:171`): the Vite-build fixture must also import `/Users/moeghashim/.gitconfig?raw` (and `/@fs/Users/moeghashim/.gitconfig?raw`) and assert the build fails or `dist/` contains no `[user]`/email content — unconditionally, not only via `node -e`.
+
 Finish with `DONE fix4 <hash…>` — only hashes in `git log`.
