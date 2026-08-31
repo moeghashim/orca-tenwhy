@@ -226,6 +226,10 @@ class WebsiteGateTests(unittest.TestCase):
         self.assertIsNone(assert_vite_installed(tmp, "6.4.3"))
         shutil.rmtree(tmp)
 
+    @unittest.skipIf(
+        os.environ.get("TENWHY_GATE_NO_SANDBOX") == "1" and os.environ.get("TENWHY_DEV") == "1",
+        "sandbox skipped",
+    )
     def test_sandbox_denies_home_write_and_network(self):
         sys.path.insert(0, str(GATE.parent))
         from website_gate import NPM_CACHE, gate_env, run_in_sandbox
@@ -276,8 +280,9 @@ class WebsiteGateTests(unittest.TestCase):
             shutil.rmtree(tree, ignore_errors=True)
 
     @unittest.skipIf(
-        os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1",
-        "lighthouse skipped",
+        (os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1")
+        or (os.environ.get("TENWHY_GATE_NO_SANDBOX") == "1" and os.environ.get("TENWHY_DEV") == "1"),
+        "lighthouse or sandbox skipped",
     )
     def test_lighthouse_unrelated_loopback_port_sees_no_request(self):
         hits = []
@@ -468,6 +473,30 @@ class WebsiteGateTests(unittest.TestCase):
             else:
                 os.environ["TENWHY_DEV"] = prev_dev
             shutil.rmtree(empty, ignore_errors=True)
+
+    def test_nosandbox_requires_tenwhy_dev(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import sandbox_skip_honoured
+
+        prev_ns = os.environ.get("TENWHY_GATE_NO_SANDBOX")
+        prev_dev = os.environ.get("TENWHY_DEV")
+        try:
+            os.environ["TENWHY_GATE_NO_SANDBOX"] = "1"
+            os.environ.pop("TENWHY_DEV", None)
+            self.assertFalse(sandbox_skip_honoured())
+            os.environ["TENWHY_DEV"] = "1"
+            self.assertTrue(sandbox_skip_honoured())
+            os.environ.pop("TENWHY_GATE_NO_SANDBOX", None)
+            self.assertFalse(sandbox_skip_honoured())
+        finally:
+            if prev_ns is None:
+                os.environ.pop("TENWHY_GATE_NO_SANDBOX", None)
+            else:
+                os.environ["TENWHY_GATE_NO_SANDBOX"] = prev_ns
+            if prev_dev is None:
+                os.environ.pop("TENWHY_DEV", None)
+            else:
+                os.environ["TENWHY_DEV"] = prev_dev
 
     def test_lighthouse_skip_requires_tenwhy_dev(self):
         sys.path.insert(0, str(GATE.parent))

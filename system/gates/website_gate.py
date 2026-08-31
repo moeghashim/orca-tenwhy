@@ -271,6 +271,11 @@ def run_in_sandbox(
     preview_port: int | None = None,
     devtools_port: int | None = None,
 ) -> subprocess.CompletedProcess:
+    if sandbox_skip_honoured():
+        try:
+            return subprocess.run(argv, cwd=tree, env=env, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(argv, 124, "", f"{phase} timed out")
     if not SANDBOX_EXEC.is_file():
         return subprocess.CompletedProcess(argv, 127, "", "sandbox unavailable")
     profile = tree / f".seatbelt-{phase}.sb"
@@ -463,7 +468,7 @@ def run_build(web: Path, loop_run_id: str) -> tuple[dict, BuildCtx]:
     named = validate_package(pkg)
     if named:
         return check("build_ok", False, named), ctx
-    if not SANDBOX_EXEC.is_file():
+    if not sandbox_skip_honoured() and not SANDBOX_EXEC.is_file():
         return check("build_ok", False, "sandbox unavailable"), ctx
 
     safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", loop_run_id)[:80] or "run"
@@ -975,6 +980,11 @@ def lighthouse_skip_honoured() -> bool:
     return os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1"
 
 
+def sandbox_skip_honoured() -> bool:
+    """Skip sandbox-exec only when both TENWHY_GATE_NO_SANDBOX=1 and TENWHY_DEV=1."""
+    return os.environ.get("TENWHY_GATE_NO_SANDBOX") == "1" and os.environ.get("TENWHY_DEV") == "1"
+
+
 def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
     if lighthouse_skip_honoured():
         return check("lighthouse≥85", True, "skipped: WEBSITE_GATE_SKIP_LIGHTHOUSE=1")
@@ -997,29 +1007,32 @@ def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
         "--host",
         "127.0.0.1",
     ]
-    if not SANDBOX_EXEC.is_file():
-        return check("lighthouse≥85", False, "sandbox unavailable")
     env = ctx.env or gate_env(ctx.home or tree, NPM_CACHE)
     home = ctx.home or tree
     tmpdir = Path(env.get("TMPDIR") or (home / "tmp"))
-    profile = tree / ".seatbelt-preview.sb"
-    try:
-        profile.write_text(
-            seatbelt_profile(
-                "preview",
-                tree,
-                NPM_CACHE,
-                home,
-                preview_port=port,
-                devtools_port=devtools_port,
-                tmpdir=tmpdir,
-            ),
-            encoding="utf-8",
-        )
-    except FileNotFoundError:
-        return check("lighthouse≥85", False, "sandbox unavailable")
+    preview_argv = list(preview_cmd)
+    if not sandbox_skip_honoured():
+        if not SANDBOX_EXEC.is_file():
+            return check("lighthouse≥85", False, "sandbox unavailable")
+        profile = tree / ".seatbelt-preview.sb"
+        try:
+            profile.write_text(
+                seatbelt_profile(
+                    "preview",
+                    tree,
+                    NPM_CACHE,
+                    home,
+                    preview_port=port,
+                    devtools_port=devtools_port,
+                    tmpdir=tmpdir,
+                ),
+                encoding="utf-8",
+            )
+        except FileNotFoundError:
+            return check("lighthouse≥85", False, "sandbox unavailable")
+        preview_argv = [str(SANDBOX_EXEC), "-f", str(profile), *preview_cmd]
     preview = subprocess.Popen(
-        [str(SANDBOX_EXEC), "-f", str(profile), *preview_cmd],
+        preview_argv,
         cwd=tree,
         env=env,
         stdout=subprocess.PIPE,

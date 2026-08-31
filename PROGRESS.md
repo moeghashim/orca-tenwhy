@@ -80,6 +80,8 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 | P5.5 | ⬜ | | | |
 | P5.6 | ⬜ | | | |
 
+P5-fix2 sandbox: orchestrator acceptance is sandboxed `make verify` (Chrome must launch under `lighthouse.sb`). `make verify-gates-nosandbox` is Codex-only (`TENWHY_GATE_NO_SANDBOX=1` is ignored unless `TENWHY_DEV=1`).
+
 P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-30):
 
 - `5` → `5.4.21` `sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==`
