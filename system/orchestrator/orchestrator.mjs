@@ -24,14 +24,22 @@ export function outgoingEdges(config, name) {
   return (config.edges || []).filter((e) => e.from === name);
 }
 
-export function customerRepoDir(eng, repoRoot = ROOT) {
+export function customerRepoDir(eng, repoRoot = ROOT, db = null) {
   const base = path.join(repoRoot, "state/customers");
+  let slug = null;
+  if (db && eng?.id) {
+    const row = db
+      .prepare(
+        `SELECT json_extract(payload, '$.slug') AS slug
+         FROM events WHERE engagement_id = ? AND kind = 'engagement.created'
+         ORDER BY id LIMIT 1`,
+      )
+      .get(eng.id);
+    if (row?.slug) slug = row.slug;
+  }
+  if (slug) return path.join(base, slug);
   const exact = path.join(base, slugify(eng.customer_name));
   if (fs.existsSync(exact)) return exact;
-  if (fs.existsSync(base)) {
-    const hits = fs.readdirSync(base).filter((s) => s.startsWith(slugify(eng.customer_name)));
-    if (hits.length === 1) return path.join(base, hits[0]);
-  }
   return exact;
 }
 
@@ -130,7 +138,7 @@ async function handleRunResult(
   }
   if (result.status !== "gate_passed") return;
 
-  const repoDir = customerRepoDir(eng, repoRoot);
+  const repoDir = customerRepoDir(eng, repoRoot, db);
   const outputs = config.loops?.[run.loop_name]?.outputs || [];
   const isResearch = outputs.some((o) => String(o).includes("RESEARCH.json"));
   if (isResearch && typeof absorbResearch === "function") {
@@ -225,7 +233,7 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
       try {
         const result = await deploy({
           engagementId: eng.id,
-          repoDir: customerRepoDir(eng, repoRoot),
+          repoDir: customerRepoDir(eng, repoRoot, db),
         });
         const liveUrl = result?.liveUrl ?? result?.url ?? null;
         db.prepare("UPDATE engagements SET status = ?, updated_at = ? WHERE id = ?").run(
@@ -310,7 +318,7 @@ export async function tick({
     await Promise.all(
       queued.map(async (run) => {
         const eng = db.prepare("SELECT * FROM engagements WHERE id = ?").get(run.engagement_id);
-        const workdir = customerRepoDir(eng, repoRoot);
+        const workdir = customerRepoDir(eng, repoRoot, db);
         const result = await runLoop({
           db,
           loopRunId: run.id,
