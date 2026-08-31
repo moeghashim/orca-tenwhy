@@ -227,3 +227,107 @@ test("SIGINT mid-tick keeps the lock until the tick finishes", async () => {
   assert.equal(fs.existsSync(lockPath), false);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("held reaper lock blocks takeover; holder then acquires", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const reapPath = `${lockPath}.reap`;
+  const heldPath = path.join(dir, "held");
+  const releasePath = path.join(dir, "release");
+  const resultPath = path.join(dir, "b.json");
+  fs.writeFileSync(lockPath, "2147483646\n");
+  const srcA = `
+    import fs from "node:fs";
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const reap = ${JSON.stringify(reapPath)};
+    const lock = ${JSON.stringify(lockPath)};
+    const fd = fs.openSync(reap, "wx");
+    try {
+      fs.writeSync(fd, \`\${process.pid}\\n\`);
+      fs.writeFileSync(${JSON.stringify(heldPath)}, String(process.pid));
+      const start = Date.now();
+      while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+        if (Date.now() - start > 8000) process.exit(99);
+        await new Promise((r) => setTimeout(r, 15));
+      }
+    } finally {
+      try { fs.closeSync(fd); } catch {}
+      try { fs.unlinkSync(reap); } catch {}
+    }
+    const got = acquireDaemonLock(lock);
+    if (!got.ok) process.exit(3);
+    process.exit(0);
+  `;
+  const srcB = `
+    import fs from "node:fs";
+    import { acquireDaemonLock } from ${JSON.stringify(LOCK_MOD)};
+    const start = Date.now();
+    while (!fs.existsSync(${JSON.stringify(heldPath)})) {
+      if (Date.now() - start > 5000) process.exit(99);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const got = acquireDaemonLock(${JSON.stringify(lockPath)});
+    fs.writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify(got));
+    process.exit(got.ok ? 0 : 3);
+  `;
+  const a = spawn(process.execPath, ["--input-type=module", "-e", srcA], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const aExit = waitExit(a);
+  await waitFor(() => fs.existsSync(heldPath));
+  const b = spawn(process.execPath, ["--input-type=module", "-e", srcB], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const eb = await waitExit(b);
+  assert.equal(eb.code, 3);
+  const bGot = JSON.parse(fs.readFileSync(resultPath, "utf8"));
+  assert.equal(bGot.ok, false);
+  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), "2147483646");
+  fs.writeFileSync(releasePath, "1");
+  const ea = await aExit;
+  assert.equal(ea.code, 0);
+  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), String(a.pid));
+  assert.equal(fs.existsSync(reapPath), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("reaper lock older than 30s with a dead pid is removed and takeover proceeds", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const reapPath = `${lockPath}.reap`;
+  const dead = 2147483646;
+  fs.writeFileSync(lockPath, `${dead}\n`);
+  fs.writeFileSync(reapPath, `${dead}\n`);
+  const aged = new Date(Date.now() - 31_000);
+  fs.utimesSync(reapPath, aged, aged);
+  const kill = (pid, sig) => {
+    if (pid === dead) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
+    return process.kill(pid, sig);
+  };
+  const got = acquireDaemonLock(lockPath, { pid: 4242, kill });
+  assert.equal(got.ok, true);
+  assert.equal(fs.readFileSync(lockPath, "utf8").trim(), "4242");
+  assert.equal(fs.existsSync(reapPath), false);
+  releaseDaemonLock(lockPath, { pid: 4242 });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("reaper lock with a live pid blocks takeover", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-lock-"));
+  const lockPath = path.join(dir, "daemon.lock");
+  const reapPath = `${lockPath}.reap`;
+  const dead = 2147483646;
+  fs.writeFileSync(lockPath, `${dead}\n`);
+  fs.writeFileSync(reapPath, `${process.pid}\n`);
+  const kill = (pid, sig) => {
+    if (pid === dead) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
+    return process.kill(pid, sig);
+  };
+  const before = fs.readFileSync(lockPath, "utf8");
+  const got = acquireDaemonLock(lockPath, { pid: 4242, kill });
+  assert.equal(got.ok, false);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), before);
+  assert.equal(fs.existsSync(reapPath), true);
+  assert.equal(fs.readFileSync(reapPath, "utf8").trim(), String(process.pid));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
