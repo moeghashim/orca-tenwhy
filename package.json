@@ -7,6 +7,10 @@
     "node": ">=20"
   },
   "description": "tenwhy graph-of-loops system repo",
+  "scripts": {
+    "dashboard": "node dashboard/server/server.mjs",
+    "dashboard:seed": "node dashboard/server/seed.mjs"
+  },
   "dependencies": {
     "yaml": "^2.9.0"
   }

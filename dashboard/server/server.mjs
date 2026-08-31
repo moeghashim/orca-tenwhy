@@ -1,0 +1,153 @@
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import { buildSnapshot, entitiesForEvent, formatSsePatch } from "./snapshot.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const DIST = path.join(ROOT, "dashboard/web/dist");
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".map": "application/json; charset=utf-8",
+};
+
+export function openReadOnly(dbPath) {
+  return new DatabaseSync(dbPath, { readOnly: true });
+}
+
+function sendJson(res, status, body) {
+  const data = JSON.stringify(body);
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  res.end(data);
+}
+
+function serveStatic(req, res) {
+  if (!fs.existsSync(DIST)) {
+    res.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
+    res.end("dashboard/web/dist missing — run vite build");
+    return;
+  }
+  const url = new URL(req.url, "http://127.0.0.1");
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === "/") rel = "/index.html";
+  const abs = path.normalize(path.join(DIST, rel));
+  if (!abs.startsWith(DIST)) {
+    res.writeHead(403).end();
+    return;
+  }
+  let file = abs;
+  if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    file = path.join(DIST, "index.html");
+  }
+  const ext = path.extname(file);
+  res.writeHead(200, { "content-type": MIME[ext] || "application/octet-stream" });
+  fs.createReadStream(file).pipe(res);
+}
+
+export function createDashboardServer({
+  dbPath,
+  repoRoot = ROOT,
+  pollMs = 500,
+  heartbeatMs = 15_000,
+} = {}) {
+  const db = openReadOnly(dbPath);
+  const clients = new Set();
+
+  function snapshot() {
+    return buildSnapshot(db, { repoRoot });
+  }
+
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, "http://127.0.0.1");
+    if (req.method === "GET" && url.pathname === "/api/snapshot") {
+      sendJson(res, 200, snapshot());
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/events") {
+      const sinceHeader = req.headers["last-event-id"];
+      const sinceQuery = url.searchParams.get("since");
+      let lastId = Number(sinceQuery ?? sinceHeader ?? 0) || 0;
+      res.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        connection: "keep-alive",
+      });
+      res.write("\n");
+      const client = { res, lastId };
+      clients.add(client);
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(": ping\n\n");
+        } catch {
+          /* closed */
+        }
+      }, heartbeatMs);
+      const poll = setInterval(() => {
+        try {
+          const rows = db
+            .prepare("SELECT * FROM events WHERE id > ? ORDER BY id")
+            .all(client.lastId);
+          for (const row of rows) {
+            const entities = entitiesForEvent(db, row, repoRoot);
+            const data = formatSsePatch(row, entities);
+            res.write(`event: patch\nid: ${row.id}\ndata: ${JSON.stringify(data)}\n\n`);
+            client.lastId = row.id;
+          }
+        } catch {
+          /* closed or db */
+        }
+      }, pollMs);
+      req.on("close", () => {
+        clearInterval(heartbeat);
+        clearInterval(poll);
+        clients.delete(client);
+      });
+      return;
+    }
+    if (url.pathname.startsWith("/api/")) {
+      sendJson(res, 404, { error: "not found" });
+      return;
+    }
+    serveStatic(req, res);
+  });
+
+  function close() {
+    for (const c of clients) {
+      try {
+        c.res.end();
+      } catch {
+        /* */
+      }
+    }
+    clients.clear();
+    server.close();
+    db.close();
+  }
+
+  return { server, db, snapshot, close };
+}
+
+function isMain() {
+  const entry = process.argv[1] && path.resolve(process.argv[1]);
+  return entry === fileURLToPath(import.meta.url);
+}
+
+if (isMain()) {
+  const dbPath = process.env.TENWHY_DB || path.join(ROOT, "state/orchestrator.db");
+  const port = Number(process.env.PORT || 4310);
+  const { server } = createDashboardServer({ dbPath, repoRoot: ROOT });
+  server.listen(port, "127.0.0.1", () => {
+    process.stdout.write(`dashboard http://127.0.0.1:${port}\n`);
+  });
+}
