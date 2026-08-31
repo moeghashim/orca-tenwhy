@@ -17,4 +17,8 @@
 7. **Results routes wired** (`main.js:12`): `#/e/<id>/results` must fetch `/api/engagements/:id/research` and `/preview-manifest` (and the engagement) before rendering; direct navigation renders real data, not fixture defaults. Test: route directly to results with a fetch stub → cards, comparison, page checklist populated.
 8. **Preview containment** (`dashboard/server/server.mjs:175`): resolve the requested path with the shared decode → reject `..`/encoded separators → normpath → `fs.realpathSync` containment inside the engagement's `dist/` realpath (no `startsWith` on the raw string; a sibling `dist-evil/` or a symlink out of `dist/` must 404). Tests: `%2e%2e/`, `..%2f`, sibling-dir prefix, symlink escape → 404; a normal asset → 200.
 
+## P4 (research reviewer) — from the orchestrator's real dry run (2026-08-31)
+
+9. **Reviewer notes must enumerate the checks** (`system/loops/company-research/reviewer.md`, `index.mjs`): Luna approved with notes "All five exit-gate checks pass." — no `1.`–`5.` lines. Make the required output explicit: the `notes` string inside the JSON must contain five lines, each starting with `1.` … `5.`, stating pass/fail and a one-sentence reason (quote the offending item on fail). Add a loop-specific verdict post-check in `index.mjs` (used by the runner via a `validateVerdict` hook): if the notes lack any of `1.`–`5.`, coerce to `revise` with `FORMAT: reviewer notes must enumerate checks 1–5` (test with the real reply text captured in PROGRESS.md as a fixture).
+
 Finish with `DONE fix3 <hash…>` — only hashes in `git log`.
