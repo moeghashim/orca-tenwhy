@@ -73,7 +73,7 @@ export function renderStart(onSubmit) {
   );
 }
 
-export function renderLoading({ events = [], loop_runs = [], engagement = null } = {}) {
+export function renderLoading({ events = [], loop_runs = [], engagement = null, rebuilding = false } = {}) {
   if (engagement?.status === "needs_human") {
     return el(
       "div",
@@ -84,8 +84,11 @@ export function renderLoading({ events = [], loop_runs = [], engagement = null }
     );
   }
   const prog = loadingProgress({ events, loop_runs });
-  const idx = prog.activeIndex < 0 ? 4 : prog.activeIndex;
-  const ph = PHASES[idx] || PHASES[0];
+  let idx = prog.activeIndex < 0 ? 4 : prog.activeIndex;
+  if (rebuilding && prog.completed < 4) idx = 3;
+  const ph = rebuilding
+    ? { title: "Rebuilding with your notes", sub: "rebuilding with your notes" }
+    : PHASES[idx] || PHASES[0];
   const steps = el("div", { class: "steps", "data-steps": "1" });
   for (let i = 0; i < 5; i++) {
     const done = i < prog.completed;
@@ -260,6 +263,7 @@ export function renderCustomerApp(root, {
   liveUrl = null,
   launching = false,
   showNotes = false,
+  rebuilding = false,
 } = {}) {
   const route = parseCustomerHash(hash);
   root.replaceChildren();
@@ -268,7 +272,7 @@ export function renderCustomerApp(root, {
     return root;
   }
   if (route.view === "loading" || (route.view === "start" && engagement)) {
-    root.append(renderLoading({ events, loop_runs, engagement }));
+    root.append(renderLoading({ events, loop_runs, engagement, rebuilding }));
     return root;
   }
   root.append(renderStart(onCreate || (() => {})));

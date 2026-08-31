@@ -5,11 +5,14 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import {
   engagementBundle,
+  hasUnprocessedApproval,
   previewDist,
   previewManifest,
   researchPayload,
   spawnLoopctlNew,
+  writeClientAllowed,
 } from "./customer_api.mjs";
+import { prefixedId, utcNow } from "../../system/orchestrator/util.mjs";
 import { buildSnapshot, entitiesForEvent, formatSsePatch } from "./snapshot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -161,6 +164,57 @@ export function createDashboardServer({
         return;
       }
       sendJson(res, 200, previewManifest(dist));
+      return;
+    }
+    const writeMatch = req.method === "POST" && url.pathname.match(/^\/api\/engagements\/([^/]+)\/(approve|request-changes)$/);
+    if (writeMatch) {
+      if (!writeClientAllowed(req)) {
+        sendJson(res, 403, { error: "forbidden" });
+        return;
+      }
+      const id = decodeURIComponent(writeMatch[1]);
+      const action = writeMatch[2] === "approve" ? "approve" : "request_changes";
+      Promise.resolve()
+        .then(async () => {
+          let body = {};
+          try {
+            body = JSON.parse((await readBody(req)) || "{}");
+          } catch {
+            sendJson(res, 400, { error: "invalid json" });
+            return;
+          }
+          const notes = typeof body.notes === "string" ? body.notes.trim() : "";
+          if (action === "request_changes" && !notes) {
+            sendJson(res, 400, { error: "notes required" });
+            return;
+          }
+          const w = openWritable(dbPath);
+          try {
+            w.exec("BEGIN IMMEDIATE");
+            const eng = w.prepare("SELECT status FROM engagements WHERE id = ?").get(id);
+            if (!eng || eng.status !== "awaiting_approval" || hasUnprocessedApproval(w, id)) {
+              w.exec("ROLLBACK");
+              sendJson(res, 409, { error: "this project isn't waiting for approval right now" });
+              return;
+            }
+            const apr = prefixedId("apr");
+            w.prepare(
+              "INSERT INTO approvals (id, engagement_id, action, notes, created_at) VALUES (?, ?, ?, ?, ?)",
+            ).run(apr, id, action, action === "request_changes" ? notes : null, utcNow());
+            w.exec("COMMIT");
+            sendJson(res, 200, { ok: true, id: apr });
+          } catch (err) {
+            try {
+              w.exec("ROLLBACK");
+            } catch {
+              /* */
+            }
+            sendJson(res, 502, { error: String(err.message || err) });
+          } finally {
+            w.close();
+          }
+        })
+        .catch((err) => sendJson(res, 502, { error: String(err.message || err) }));
       return;
     }
     const previewGet = req.method === "GET" && url.pathname.match(/^\/preview\/([^/]+)(?:\/(.*))?$/);

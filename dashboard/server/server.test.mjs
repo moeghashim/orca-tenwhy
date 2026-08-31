@@ -9,6 +9,9 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createDashboardServer, openReadOnly } from "./server.mjs";
 import { seedDemo } from "./seed.mjs";
+import { generateCustomerRepo } from "../../system/orchestrator/customer_repo.mjs";
+import { tick } from "../../system/orchestrator/orchestrator.mjs";
+import { openDb, prefixedId, utcNow } from "../../system/orchestrator/util.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -378,4 +381,229 @@ test("seeded awaiting_approval engagement serves research and preview HTML", asy
   assert.match(html.body, /Harbor/);
   assert.match(String(html.headers["content-security-policy"] || ""), /sandbox/);
   assert.equal(html.headers["x-frame-options"], "SAMEORIGIN");
+});
+
+const LOOP_CONFIG = {
+  caps: { iteration_cap: 4, retry_cap: 2 },
+  loops: {
+    "company-research": { outputs: ["research/RESEARCH.json"] },
+    website: { outputs: ["brand/", "website/"] },
+  },
+  edges: [{ from: "company-research", to: "website" }],
+};
+
+function passingRunLoop() {
+  return async ({ db, loopRunId, loopName, workdir }) => {
+    db.prepare("UPDATE loop_runs SET status = 'running', started_at = ? WHERE id = ?").run(utcNow(), loopRunId);
+    if (loopName === "company-research") {
+      fs.mkdirSync(path.join(workdir, "research"), { recursive: true });
+      fs.writeFileSync(
+        path.join(workdir, "research/RESEARCH.json"),
+        JSON.stringify({ company: { name: "Acme", customer_products: [] }, competitors: [] }),
+      );
+    }
+    db.prepare("UPDATE loop_runs SET status = 'gate_passed', finished_at = ? WHERE id = ?").run(utcNow(), loopRunId);
+    return { loopRunId, status: "gate_passed", iterations: [] };
+  };
+}
+
+function writeHeaders(port) {
+  return {
+    Origin: `http://127.0.0.1:${port}`,
+    "X-Tenwhy-Client": "customer-ui",
+  };
+}
+
+async function awaitingEngagement() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-p103-"));
+  const dbPath = path.join(tmp, "t.db");
+  const db = openDb(dbPath);
+  const workdir = path.join(tmp, "state/customers/acme");
+  generateCustomerRepo({
+    slug: "acme",
+    customerName: "Acme",
+    idea: "clinic",
+    siteUrl: "",
+    targetDir: workdir,
+  });
+  const id = prefixedId("eng");
+  const now = utcNow();
+  db.prepare(
+    `INSERT INTO engagements (id, customer_name, idea, site_url, repo_url, status, created_at, updated_at)
+     VALUES (?, 'Acme', 'clinic', NULL, ?, 'new', ?, ?)`,
+  ).run(id, workdir, now, now);
+  await tick({ db, config: LOOP_CONFIG, repoRoot: tmp, runLoop: passingRunLoop(), deploy: async () => ({}) });
+  const status = db.prepare("SELECT status FROM engagements WHERE id = ?").get(id).status;
+  assert.equal(status, "awaiting_approval");
+  db.close();
+  return { tmp, dbPath, id };
+}
+
+function runningEngagement() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-p103-run-"));
+  const dbPath = path.join(tmp, "t.db");
+  const db = openDb(dbPath);
+  const id = prefixedId("eng");
+  const now = utcNow();
+  db.prepare(
+    `INSERT INTO engagements (id, customer_name, idea, site_url, repo_url, status, created_at, updated_at)
+     VALUES (?, 'Acme', 'clinic', NULL, NULL, 'running', ?, ?)`,
+  ).run(id, now, now);
+  db.close();
+  return { tmp, dbPath, id };
+}
+
+test("approve on awaiting_approval then tick deploys once and completes", async (t) => {
+  const { tmp, dbPath, id } = await awaitingEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const posted = await postJson(port, `/api/engagements/${id}/approve`, {}, writeHeaders(port));
+  assert.equal(posted.status, 200, posted.json);
+  assert.equal(posted.json.ok, true);
+  assert.match(posted.json.id, /^apr_/);
+  const again = await postJson(port, `/api/engagements/${id}/approve`, {}, writeHeaders(port));
+  assert.equal(again.status, 409);
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  const row = db.prepare("SELECT * FROM approvals WHERE engagement_id = ?").get(id);
+  assert.equal(row.action, "approve");
+  assert.equal(row.id, posted.json.id);
+  const calls = [];
+  const deploy = async (args) => {
+    calls.push(args);
+    return { liveUrl: "https://acme.example.workers.dev" };
+  };
+  await tick({ db, config: LOOP_CONFIG, repoRoot: tmp, runLoop: passingRunLoop(), deploy });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].engagementId, id);
+  const done = db.prepare("SELECT status FROM engagements WHERE id = ?").get(id);
+  assert.equal(done.status, "complete");
+  const complete = db.prepare("SELECT payload FROM events WHERE kind = 'engagement.complete'").get();
+  assert.equal(JSON.parse(complete.payload).liveUrl, "https://acme.example.workers.dev");
+  db.close();
+});
+
+test("request-changes queues website run with change_request_id and notes", async (t) => {
+  const { tmp, dbPath, id } = await awaitingEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const posted = await postJson(
+    port,
+    `/api/engagements/${id}/request-changes`,
+    { notes: "Please use a darker green" },
+    writeHeaders(port),
+  );
+  assert.equal(posted.status, 200, posted.json);
+  assert.equal(posted.json.ok, true);
+  const apr = posted.json.id;
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  await tick({ db, config: LOOP_CONFIG, repoRoot: tmp, runLoop: passingRunLoop(), deploy: async () => ({}) });
+  const sites = db
+    .prepare("SELECT attempt, change_request_id, adjusted_instructions FROM loop_runs WHERE loop_name = 'website'")
+    .all();
+  const cr = sites.find((s) => s.change_request_id === apr);
+  assert.ok(cr, `website runs: ${JSON.stringify(sites)}`);
+  assert.equal(cr.attempt, 0);
+  assert.match(cr.adjusted_instructions, /^Customer change request:\nPlease use a darker green/);
+  db.close();
+});
+
+test("approve and request-changes on running engagement return 409 with no approvals row", async (t) => {
+  const { tmp, dbPath, id } = runningEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const headers = writeHeaders(port);
+  const a = await postJson(port, `/api/engagements/${id}/approve`, {}, headers);
+  assert.equal(a.status, 409);
+  const r = await postJson(port, `/api/engagements/${id}/request-changes`, { notes: "n" }, headers);
+  assert.equal(r.status, 409);
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  const n = db.prepare("SELECT COUNT(*) AS n FROM approvals WHERE engagement_id = ?").get(id).n;
+  assert.equal(n, 0);
+  db.close();
+});
+
+test("request-changes with empty notes returns 400", async (t) => {
+  const { tmp, dbPath, id } = await awaitingEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const empty = await postJson(port, `/api/engagements/${id}/request-changes`, { notes: "  " }, writeHeaders(port));
+  assert.equal(empty.status, 400);
+  const missing = await postJson(port, `/api/engagements/${id}/request-changes`, {}, writeHeaders(port));
+  assert.equal(missing.status, 400);
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  const n = db.prepare("SELECT COUNT(*) AS n FROM approvals").get().n;
+  assert.equal(n, 0);
+  db.close();
+});
+
+test("write endpoints reject missing Origin or wrong client header with 403", async (t) => {
+  const { tmp, dbPath, id } = await awaitingEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const noOrigin = await postJson(port, `/api/engagements/${id}/approve`, {}, { "X-Tenwhy-Client": "customer-ui" });
+  assert.equal(noOrigin.status, 403);
+  const wrongClient = await postJson(port, `/api/engagements/${id}/approve`, {}, {
+    Origin: `http://127.0.0.1:${port}`,
+    "X-Tenwhy-Client": "preview",
+  });
+  assert.equal(wrongClient.status, 403);
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  const n = db.prepare("SELECT COUNT(*) AS n FROM approvals").get().n;
+  assert.equal(n, 0);
+  db.close();
 });

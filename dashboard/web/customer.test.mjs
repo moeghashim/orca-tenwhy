@@ -108,3 +108,34 @@ test("results tabs render research, website preview, and both action controls", 
   assert.ok(root.querySelector("[data-approve]"));
   assert.ok(root.querySelector("[data-request]"));
 });
+
+test("results launching, 409 copy, and rebuilding loading copy", () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  renderCustomerApp(root, {
+    hash: "#/e/eng_0143/results",
+    engagement: { id: "eng_0143", status: "awaiting_approval" },
+    launching: true,
+    busy: true,
+  });
+  assert.equal(root.querySelector("[data-approve]").textContent, "launching…");
+  assert.equal(root.querySelector("[data-approve]").disabled, true);
+  assert.equal(root.querySelector("[data-request]").disabled, true);
+  renderCustomerApp(root, {
+    hash: "#/e/eng_0143/results",
+    engagement: { id: "eng_0143", status: "awaiting_approval" },
+    error: "this project isn't waiting for approval right now",
+  });
+  assert.equal(root.querySelector("[data-error]").textContent, "this project isn't waiting for approval right now");
+  renderCustomerApp(root, {
+    hash: "#/e/eng_x",
+    engagement: { id: "eng_x", status: "running" },
+    rebuilding: true,
+    events: [],
+    loop_runs: [],
+  });
+  assert.match(root.textContent, /Rebuilding with your notes/);
+  assert.match(root.textContent, /rebuilding with your notes/);
+});
