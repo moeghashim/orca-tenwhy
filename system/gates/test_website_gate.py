@@ -207,6 +207,27 @@ class WebsiteGateTests(unittest.TestCase):
         checks = self._assert_case("fail_links_srcset", 1, "links_ok")
         self.assertIn("srcset", checks[2]["detail"])
 
+    def test_fail_links_escape(self):
+        checks = self._assert_case("fail_links_escape", 1, "links_ok")
+        detail = checks[2]["detail"]
+        self.assertTrue("outside.png" in detail or "%2e" in detail or "secret.png" in detail, detail)
+
+    def test_dist_symlink_escape_is_broken(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import resolve_in_dist
+
+        tmp = Path(tempfile.mkdtemp())
+        dist = tmp / "dist"
+        dist.mkdir()
+        (dist / "index.html").write_text('<img src="out.png">', encoding="utf-8")
+        outside = tmp / "outside.png"
+        outside.write_bytes(b"x")
+        link = dist / "out.png"
+        link.symlink_to(outside)
+        resolved = resolve_in_dist(dist, dist / "index.html", "out.png")
+        self.assertEqual(str(resolved), "/__outside_dist__")
+        shutil.rmtree(tmp)
+
     def test_fail_placeholders(self):
         checks = self._assert_case("fail_placeholders", 1, "links_ok")
         self.assertIn("unwired placeholders", checks[2]["detail"])

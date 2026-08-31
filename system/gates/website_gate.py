@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+import posixpath
 
 import jsonschema
 
@@ -477,34 +478,75 @@ def is_ignored(url: str) -> bool:
 
 
 def strip_url(url: str) -> str:
-    s = unquote(url.strip())
-    s = s.split("#", 1)[0].split("?", 1)[0]
-    return s
+    s = url.strip().split("#", 1)[0].split("?", 1)[0]
+    return unquote(s)
+
+
+def url_rejected(url: str) -> bool:
+    raw = url.strip()
+    if "\x00" in raw or "\\" in raw:
+        return True
+    if raw.startswith("//"):
+        return True
+    lower = raw.lower()
+    if "%00" in lower or "%5c" in lower:
+        return True
+    if "%2e" in lower or "%2f" in lower:
+        return True
+    decoded = unquote(raw)
+    if "\x00" in decoded or "\\" in decoded:
+        return True
+    return False
 
 
 def resolve_in_dist(dist: Path, from_file: Path, url: str) -> Path | None:
+    if url_rejected(url):
+        return Path("/__rejected__")
     raw = strip_url(url)
     if is_ignored(raw):
         return None
+    while raw.startswith("./"):
+        raw = raw[2:]
     dist_real = dist.resolve()
     if raw.startswith("/"):
-        target = dist_real / raw.lstrip("/")
+        joined = posixpath.normpath("/" + raw.lstrip("/"))
+        if joined.startswith("/..") or joined == "/..":
+            return Path("/__outside_dist__")
+        target = dist_real.joinpath(*joined.lstrip("/").split("/")) if joined != "/" else dist_real
     else:
-        target = (from_file.parent / raw)
-        try:
-            target = target.resolve()
-        except OSError:
-            return Path("/__unresolved__")
+        start = from_file.parent.resolve()
+        joined = posixpath.normpath(str(Path(raw).as_posix()))
+        target = start.joinpath(*joined.split("/")) if joined not in (".", "") else start
     try:
-        target.relative_to(dist_real)
-    except ValueError:
+        if target.exists() or target.is_symlink():
+            real = target.resolve()
+        else:
+            real = target
+    except OSError:
+        return Path("/__unresolved__")
+    prefix = str(dist_real) + os.sep
+    real_s = str(real)
+    if not (real_s == str(dist_real) or real_s.startswith(prefix)):
         return Path("/__outside_dist__")
+    if target.is_symlink():
+        try:
+            if not str(target.resolve()).startswith(prefix) and str(target.resolve()) != str(dist_real):
+                return Path("/__outside_dist__")
+        except OSError:
+            return Path("/__outside_dist__")
     candidates = [target]
     if target.suffix == "":
         candidates.extend([target / "index.html", Path(str(target) + ".html")])
     for c in candidates:
+        if c.is_file() and not c.is_symlink():
+            try:
+                cr = c.resolve()
+            except OSError:
+                continue
+            if str(cr) == str(dist_real) or str(cr).startswith(prefix):
+                return cr
         if c.is_file():
-            return c
+            return Path("/__outside_dist__")
     return target
 
 
