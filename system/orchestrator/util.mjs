@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { redactText } from "./redact.mjs";
+import { redactDeep, redactText } from "./redact.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -43,7 +43,7 @@ export function runGit(cwd, args, { check = true } = {}) {
 export function insertEvent(db, { engagementId = null, loopRunId = null, kind, payload = {} }) {
   db.prepare(
     "INSERT INTO events (engagement_id, loop_run_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(engagementId, loopRunId, kind, redactText(JSON.stringify(payload)), utcNow());
+  ).run(engagementId, loopRunId, kind, redactText(JSON.stringify(redactDeep(payload))), utcNow());
 }
 
 export function migrateDb(dbPath) {

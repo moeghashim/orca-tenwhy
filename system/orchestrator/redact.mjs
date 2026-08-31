@@ -62,5 +62,16 @@ export function redactText(text) {
   return s;
 }
 
+export function redactDeep(value) {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v);
+    return out;
+  }
+  return value;
+}
+
 seedSecretsFromEnv();
 if (process.env.TENWHY_ENV_FILE) seedSecretsFromEnvFile(process.env.TENWHY_ENV_FILE);

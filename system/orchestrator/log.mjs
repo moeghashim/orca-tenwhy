@@ -1,4 +1,4 @@
-import { redactText } from "./redact.mjs";
+import { redactDeep, redactText } from "./redact.mjs";
 import { utcNow } from "./util.mjs";
 
 const SECRET_KEY = /token|secret|password|passwd|authorization|api[_-]?key|credential/i;
@@ -12,9 +12,9 @@ function minLevel() {
 function fmtVal(value) {
   let s;
   if (value == null) s = "";
-  else if (typeof value === "string") s = value;
+  else if (typeof value === "string") s = redactText(value);
   else if (typeof value === "number" || typeof value === "boolean") s = String(value);
-  else s = JSON.stringify(value);
+  else s = JSON.stringify(redactDeep(value));
   s = redactText(s);
   s = s.replace(/\s+/g, " ").trim();
   if (s.length > 240) s = `${s.slice(0, 200)}…`;

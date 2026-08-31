@@ -106,3 +106,31 @@ test("value-based redaction strips secrets from logs, previews, errors, and even
   db.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test("redaction walks payload strings before JSON.stringify so quotes and backslashes cannot leak", async () => {
+  const token = 'tok"live\\secret99';
+  const jsonEscaped = JSON.stringify(token).slice(1, -1);
+  addSecretValues([token]);
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-redact-json-"));
+  const db = openDb(path.join(tmp, "t.db"));
+  insertEvent(db, {
+    kind: "loop_run.error",
+    payload: { message: `stderr: ${token}`, nested: { token } },
+  });
+  const row = db
+    .prepare("SELECT payload FROM events WHERE kind = 'loop_run.error' ORDER BY id DESC LIMIT 1")
+    .get();
+  assert.match(row.payload, /\[redacted\]/);
+  assert.equal(row.payload.includes(token), false, `raw secret leaked: ${row.payload}`);
+  assert.equal(row.payload.includes(jsonEscaped), false, `JSON-escaped secret leaked: ${row.payload}`);
+
+  const { text } = await captureStdout(() => {
+    log("info", "pi", "adapter error", { detail: { stderr: `boom ${token}` } });
+  });
+  assert.match(text, /\[redacted\]/);
+  assert.equal(text.includes(token), false);
+  assert.equal(text.includes(jsonEscaped), false);
+  db.close();
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
