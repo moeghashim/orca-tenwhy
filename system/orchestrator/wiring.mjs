@@ -6,6 +6,7 @@ import { createPiAdapter } from "./adapters/pi.mjs";
 import { deploy } from "./deploy.mjs";
 import { absorbResearch as absorb } from "./knowledge.mjs";
 import { runLoop } from "./loop_runner.mjs";
+import { info } from "./log.mjs";
 import { ROOT, loadLoopsConfig } from "./util.mjs";
 
 const SCRUBBED_GATE_KEYS = ["WEBSITE_GATE_SKIP_LIGHTHOUSE", "TENWHY_DEV"];
@@ -27,6 +28,7 @@ export function spawnGate({
   if (!script || !fs.existsSync(script)) {
     throw new Error(`gate script missing: ${script}`);
   }
+  info("gate", "spawn start", { script, run: loopRunId });
   const result = spawnSync(
     python,
     [script, "--workdir", workdir, "--db", dbPath, "--loop-run-id", loopRunId],
@@ -36,7 +38,16 @@ export function spawnGate({
   if (!stdout) {
     throw new Error(`gate ${script} produced no stdout (exit ${result.status}): ${result.stderr}`);
   }
-  return JSON.parse(stdout.split(/\n/).pop());
+  const parsed = JSON.parse(stdout.split(/\n/).pop());
+  const checks = Array.isArray(parsed) ? parsed : [];
+  info("gate", "spawn end", {
+    script,
+    run: loopRunId,
+    passed: checks.filter((c) => c.passed).length,
+    total: checks.length,
+    exit: result.status,
+  });
+  return parsed;
 }
 
 export function createYamlGateRunner({ repoRoot = ROOT, config }) {

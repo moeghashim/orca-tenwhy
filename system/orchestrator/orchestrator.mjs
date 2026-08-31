@@ -3,6 +3,8 @@ import path from "node:path";
 import { generateCustomerRepo, slugify } from "./customer_repo.mjs";
 import { deploy as defaultDeploy } from "./deploy.mjs";
 import { handleGateFailed as defaultHandleGateFailed } from "./failure.mjs";
+import { acquireDaemonLock, releaseDaemonLock } from "./daemon_lock.mjs";
+import { error as logError, info } from "./log.mjs";
 import {
   ROOT,
   insertEvent,
@@ -146,6 +148,7 @@ async function handleRunResult(
     const researchJson = fs.existsSync(researchJsonPath)
       ? JSON.parse(fs.readFileSync(researchJsonPath, "utf8"))
       : {};
+    info("absorb", "start", { run: run.id });
     await absorbResearch({
       repoDir,
       researchJson,
@@ -153,6 +156,7 @@ async function handleRunResult(
       now: utcNow(),
       loopRunId: run.id,
     });
+    info("absorb", "end", { run: run.id });
   }
 
   const outgoing = outgoingEdges(config, run.loop_name);
@@ -225,12 +229,14 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
       continue;
     }
     if (approval.action === "approve") {
+      info("approvals", "processed", { approval: approval.id, action: approval.action, engagement: eng.id });
       insertEvent(db, {
         engagementId: eng.id,
         kind: "approval.processed",
         payload: { approvalId: approval.id, action: approval.action },
       });
       try {
+        info("deploy", "start", { engagement: eng.id, approval: approval.id });
         const result = await deploy({
           engagementId: eng.id,
           approvalId: approval.id,
@@ -250,7 +256,9 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
           kind: "engagement.complete",
           payload: { liveUrl },
         });
-      } catch {
+        info("deploy", "end", { engagement: eng.id, status: "ok" });
+      } catch (err) {
+        logError("deploy", "end", { engagement: eng.id, status: "failed", err: String(err?.message || err).slice(0, 200) });
         db.prepare("UPDATE engagements SET status = ?, updated_at = ? WHERE id = ?").run(
           "needs_human",
           utcNow(),
@@ -264,6 +272,7 @@ export async function processApprovals({ db, deploy = defaultDeploy, repoRoot = 
       }
       continue;
     } else if (approval.action === "request_changes") {
+      info("approvals", "processed", { approval: approval.id, action: approval.action, engagement: eng.id });
       const notes = approval.notes || "";
       const runId = queueLoopRun(db, {
         engagementId: eng.id,
@@ -306,6 +315,10 @@ export async function tick({
 }) {
   db.exec("PRAGMA foreign_keys = ON");
   const news = db.prepare("SELECT * FROM engagements WHERE status = 'new'").all();
+  const queuedAtStart = db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE status = 'queued'").get().n;
+  info("tick", "start", { new: news.length, queued: queuedAtStart });
+  let loopsStarted = 0;
+  let loopsFinished = 0;
   for (const eng of news) {
     setEngagementStatus(db, eng.id, "running");
     insertEvent(db, {
@@ -323,6 +336,8 @@ export async function tick({
       queued.map(async (run) => {
         const eng = db.prepare("SELECT * FROM engagements WHERE id = ?").get(run.engagement_id);
         const workdir = customerRepoDir(eng, repoRoot, db);
+        loopsStarted += 1;
+        info("loop", "start", { run: run.id, loop: run.loop_name, attempt: run.attempt, engagement: eng.id });
         const result = await runLoop({
           db,
           loopRunId: run.id,
@@ -341,6 +356,8 @@ export async function tick({
               ? { idea: eng.idea, site_url: eng.site_url }
               : computeHandoff(workdir, eng),
         });
+        loopsFinished += 1;
+        info("loop", "end", { run: run.id, loop: run.loop_name, status: result?.status });
         await handleRunResult(db, config, eng, run, result, {
           absorbResearch,
           repoRoot,
@@ -354,13 +371,22 @@ export async function tick({
   if (typeof processApprovalsFn === "function") {
     await processApprovalsFn({ db, deploy, repoRoot, config, dbPath });
   }
+  info("tick", "end", { started: loopsStarted, finished: loopsFinished });
 }
 
 export async function runDaemon({
   intervalMs = 2000,
   dbPath = process.env.TENWHY_DB || path.join(ROOT, "state/orchestrator.db"),
   tickOpts = null,
+  lockPath = path.join(ROOT, "state/daemon.lock"),
 } = {}) {
+  const got = acquireDaemonLock(lockPath);
+  if (!got.ok) {
+    const err = new Error(`daemon already running (pid ${got.pid})`);
+    err.exitCode = 3;
+    throw err;
+  }
+  try {
   const opts =
     tickOpts && typeof tickOpts.runLoop === "function"
       ? tickOpts
@@ -388,6 +414,9 @@ export async function runDaemon({
         resolve();
       }
     });
+  }
+  } finally {
+    releaseDaemonLock(lockPath);
   }
 }
 

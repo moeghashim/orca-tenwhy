@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createPiAdapter } from "./adapters/pi.mjs";
+import { debug, error as logError, info, preview } from "./log.mjs";
 import { prefixedId, utcNow } from "./util.mjs";
 
 export { utcNow };
@@ -354,6 +355,7 @@ export async function runLoop({
     kind: "loop_run.started",
     payload: { loopName, attempt, inputs: inputs ?? null },
   });
+  info("loop", "run start", { run: loopRunId, loop: loopName, attempt });
 
   const iterations = [];
   let lastExecutorTrace = null;
@@ -365,6 +367,8 @@ export async function runLoop({
   if (typeof loopMod?.prepare === "function") {
     const prepSessionId = randomUUID();
     let prep;
+    const prepStarted = Date.now();
+    info("loop", "prepare start", { run: loopRunId, session: prepSessionId });
     try {
       prep = await loopMod.prepare({
         workdir,
@@ -381,6 +385,7 @@ export async function runLoop({
         now: utcNow(),
       });
     } catch (err) {
+      logError("loop", "prepare end", { run: loopRunId, session: prepSessionId, err: String(err?.message || err).slice(0, 200) });
       return failRunOnError(db, {
         engagementId,
         loopRunId,
@@ -391,6 +396,7 @@ export async function runLoop({
         traceRef: err?.traceRef ?? lastExecutorTrace,
       });
     }
+    info("loop", "prepare end", { run: loopRunId, session: prepSessionId, ms: Date.now() - prepStarted, ok: prep?.ok ? 1 : 0 });
     if (!prep?.ok) {
       const detail = prep?.error || "prepare failed";
       const traceRef = prep?.traceRef ?? null;
@@ -442,6 +448,9 @@ export async function runLoop({
       loopRunId,
     });
     let execResult;
+    const execStarted = Date.now();
+    info("loop", "executor start", { run: loopRunId, n, session: execSessionId });
+    debug("loop", "executor prompt", { preview: preview(execPrompt) });
     try {
       execResult = await adapter.run({
       role: "executor",
@@ -456,8 +465,23 @@ export async function runLoop({
       config,
       });
     } catch (err) {
+      logError("loop", "executor end", {
+        run: loopRunId,
+        n,
+        session: execSessionId,
+        stderr: preview(err?.stderr || err?.message, 200),
+        exit: err?.exitCode,
+      });
       return failRunOnError(db, { engagementId, loopRunId, n, role: "executor", err, iterations, traceRef: lastExecutorTrace });
     }
+    info("loop", "executor end", {
+      run: loopRunId,
+      n,
+      session: execSessionId,
+      exit: execResult.exitCode ?? 0,
+      ms: Date.now() - execStarted,
+      tools: execResult.toolCalls ?? 0,
+    });
     lastExecutorTrace = execResult.traceRef;
     const outputPath = execResult.outputPath;
 
@@ -521,6 +545,9 @@ export async function runLoop({
       vars,
     });
     let revResult;
+    const revStarted = Date.now();
+    info("loop", "reviewer start", { run: loopRunId, n, session: revSessionId });
+    debug("loop", "reviewer prompt", { preview: preview(revPrompt) });
     try {
       revResult = await adapter.run({
       role: "reviewer",
@@ -535,8 +562,23 @@ export async function runLoop({
       config,
       });
     } catch (err) {
+      logError("loop", "reviewer end", {
+        run: loopRunId,
+        n,
+        session: revSessionId,
+        stderr: preview(err?.stderr || err?.message, 200),
+        exit: err?.exitCode,
+      });
       return failRunOnError(db, { engagementId, loopRunId, n, role: "reviewer", err, iterations, traceRef: lastExecutorTrace });
     }
+    info("loop", "reviewer end", {
+      run: loopRunId,
+      n,
+      session: revSessionId,
+      exit: revResult.exitCode ?? 0,
+      ms: Date.now() - revStarted,
+      tools: revResult.toolCalls ?? 0,
+    });
     let parsed = parseReviewerVerdict(revResult.text);
     if (typeof loopMod?.validateVerdict === "function") {
       parsed = loopMod.validateVerdict(parsed) || parsed;
@@ -614,7 +656,11 @@ export async function runLoop({
   }
 
   const runner = gateRunner ?? defaultGateRunner;
+  info("gate", "start", { run: loopRunId, loop: loopName });
+  const gateStarted = Date.now();
   const rawChecks = (await runner({ loopName, workdir, db, loopRunId, dbPath })) ?? [];
+  const passedN = rawChecks.filter((c) => c.passed).length;
+  info("gate", "end", { run: loopRunId, passed: passedN, total: rawChecks.length, ms: Date.now() - gateStarted });
   const gateChecks = rawChecks.map((c) => ({
     check_name: c.check_name,
     passed: c.passed ? 1 : 0,

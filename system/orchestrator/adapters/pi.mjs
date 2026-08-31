@@ -4,6 +4,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { debug, error as logError, preview } from "../log.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const providerLocks = new Map();
@@ -185,6 +186,7 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
       await fs.mkdir(sessionDir, { recursive: true });
       await fs.mkdir(workdir, { recursive: true });
       const script = piScriptForRole(role, loopName, repoRoot);
+      debug("pi", "prompt", { role, session, preview: preview(prompt) });
       const result = await withProviderLock(provider, () =>
         runPiScript({
           script,
@@ -204,6 +206,12 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
       const streamError = extractStreamError(result.stdout);
       const text = extractAssistantText(result.stdout);
       if (result.code !== 0 || streamError || !text) {
+        logError("pi", "adapter error", {
+          role,
+          session,
+          exit: result.code,
+          stderr: preview(result.stderr, 200),
+        });
         const err = new Error(
           `pi ${role} run failed (exit ${result.code})` +
             (streamError ? `: ${streamError}` : !text ? ": no assistant text in output" : "") +
@@ -212,6 +220,7 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
         err.code = "PI_RUN_FAILED";
         err.traceRef = traceRef;
         err.exitCode = result.code;
+        err.stderr = result.stderr;
         throw err;
       }
       if (role === "reviewer") {
@@ -219,10 +228,19 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
       }
       const outputPath = path.join(workdir, `${role}-${n}.txt`);
       await fs.writeFile(outputPath, text, "utf8");
+      let toolCalls = 0;
+      try {
+        const sessionFile = findSessionFile(sessionDir, session);
+        if (sessionFile) toolCalls = countToolCalls(fsSync.readFileSync(sessionFile, "utf8"));
+      } catch {
+        /* */
+      }
       return {
         text,
         outputPath,
         traceRef,
+        exitCode: result.code,
+        toolCalls,
       };
     },
   };
