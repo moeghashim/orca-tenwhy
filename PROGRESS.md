@@ -134,7 +134,7 @@ P7-fix4 item 10 (Codex `P7 issues #r4`): `node --test "dashboard/server/*.test.m
 
 | Item | Status | Evidence |
 |---|---|---|
-| `make verify` exits 0 | ⬜ | |
+| `make verify` exits 0 | 🟡 | orchestrator isolated run @9fa771c (HEAD after round 4) → **exit 0**: identity audit, schema 7/7, lint, 11 scrape, 12 research-gate, 34 website-gate (sandboxed incl. Lighthouse), 106 node tests (2026-08-31). Re-run after round 5 for the final mark. |
 | Real engagement: research gate passed (P4.3) | ⬜ | |
 | Reached `awaiting_approval` (P5.5) | ⬜ | |
 | Approved via customer flow + live URL 200 (P5.6) | ⬜ | |
