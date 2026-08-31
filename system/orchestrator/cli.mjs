@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { generateCustomerRepo, publishCustomerRepo, slugify } from "./customer_repo.mjs";
+import { redactText } from "./redact.mjs";
 import { ROOT, insertEvent, openDb, prefixedId, utcNow } from "./util.mjs";
 
 function usage() {
@@ -166,7 +167,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.error(usage());
     process.exitCode = 2;
   } catch (err) {
-    console.error(err.message || err);
+    console.error(redactText(String(err.message || err)));
     process.exitCode = err.exitCode ?? 1;
   }
 }

@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createPiAdapter } from "./adapters/pi.mjs";
 import { debug, error as logError, info, preview } from "./log.mjs";
-import { prefixedId, utcNow } from "./util.mjs";
+import { insertEvent, prefixedId, utcNow } from "./util.mjs";
 
 export { utcNow };
 
@@ -287,12 +287,6 @@ function failRunOnError(db, { engagementId, loopRunId, n, role, err, iterations,
     payload: { n, reason: "adapter_error", message: message.slice(0, 1000) },
   });
   return { loopRunId, status: "needs_human", iterations, gateChecks: [], error: message };
-}
-
-function insertEvent(db, { engagementId, loopRunId, kind, payload }) {
-  db.prepare(
-    "INSERT INTO events (engagement_id, loop_run_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(engagementId, loopRunId, kind, JSON.stringify(payload ?? {}), utcNow());
 }
 
 function finishRun(db, { loopRunId, status, traceRef }) {

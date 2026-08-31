@@ -1,3 +1,4 @@
+import { redactText } from "./redact.mjs";
 import { utcNow } from "./util.mjs";
 
 const SECRET_KEY = /token|secret|password|passwd|authorization|api[_-]?key|credential/i;
@@ -14,6 +15,7 @@ function fmtVal(value) {
   else if (typeof value === "string") s = value;
   else if (typeof value === "number" || typeof value === "boolean") s = String(value);
   else s = JSON.stringify(value);
+  s = redactText(s);
   s = s.replace(/\s+/g, " ").trim();
   if (s.length > 240) s = `${s.slice(0, 200)}…`;
   if (/[\s="]/.test(s)) return `"${s.replace(/"/g, '\\"')}"`;
@@ -22,13 +24,13 @@ function fmtVal(value) {
 
 export function log(level, component, msg, fields = {}) {
   if ((LEVELS[level] ?? 20) < minLevel()) return;
-  const parts = [utcNow(), level, component, String(msg ?? "")];
+  const parts = [utcNow(), level, component, redactText(String(msg ?? ""))];
   for (const [k, v] of Object.entries(fields)) {
     if (v == null || v === "") continue;
     const val = SECRET_KEY.test(k) ? "[redacted]" : fmtVal(v);
     parts.push(`${k}=${val}`);
   }
-  process.stdout.write(`${parts.join(" ")}\n`);
+  process.stdout.write(`${redactText(parts.join(" "))}\n`);
 }
 
 export function info(component, msg, fields) {
@@ -44,7 +46,7 @@ export function error(component, msg, fields) {
 }
 
 export function preview(text, n = 200) {
-  return String(text ?? "")
+  return redactText(String(text ?? ""))
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, n);

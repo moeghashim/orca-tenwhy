@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { addSecretValues, redactText, seedSecretsFromEnvFile } from "./redact.mjs";
 import { ROOT, insertEvent } from "./util.mjs";
 
 const PROVISION = path.join(ROOT, "system/tools/provision.sh");
@@ -47,7 +48,9 @@ function parseEnvFile(filePath, allowedNames) {
 
 function childEnv(record) {
   const names = record?.env_var_names || [];
+  seedSecretsFromEnvFile(record?.env_file);
   const loaded = parseEnvFile(record?.env_file, names);
+  addSecretValues(Object.values(loaded));
   const env = { ...process.env, ...loaded };
   if (loaded.SITE_API_TOKEN && !env.CLOUDFLARE_API_TOKEN) {
     env.CLOUDFLARE_API_TOKEN = loaded.SITE_API_TOKEN;
@@ -82,7 +85,9 @@ export function runProvision({ engagementId, slug, repoRoot = ROOT, env = proces
     env,
   });
   if (result.status !== 0) {
-    throw new Error(`provision.sh failed (exit ${result.status}): ${(result.stderr || result.stdout || "").trim()}`);
+    throw new Error(
+      redactText(`provision.sh failed (exit ${result.status}): ${(result.stderr || result.stdout || "").trim()}`),
+    );
   }
   return readProvisionRecord(engagementId, repoRoot);
 }
@@ -132,10 +137,12 @@ export async function deploy({
         payload: { approvalId, refused: true, reason },
       });
     }
-    throw new DeployRefused(reason, parsed);
+    throw new DeployRefused(redactText(reason), parsed);
   }
   if (result.status !== 0) {
-    throw new Error(`deploy.sh failed (exit ${result.status}): ${(result.stderr || result.stdout || "").trim()}`);
+    throw new Error(
+      redactText(`deploy.sh failed (exit ${result.status}): ${(result.stderr || result.stdout || "").trim()}`),
+    );
   }
   const liveUrl = parsed?.live_url || parsed?.liveUrl || null;
   if (!liveUrl) {
