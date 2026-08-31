@@ -789,6 +789,9 @@ def inspect_ref(url: str, *, image_brief: bool = False) -> tuple[str, str | None
         return "reject", None
     if "\x00" in decoded or "\\" in decoded or has_dot_dot_segment(decoded):
         return "reject", None
+    if image_brief and any(ch in decoded for ch in "`\"'"):
+        # Codex #r11: %27 / %22 / %60 decode to delimiters — reject after decoding too.
+        return "reject", None
     if "%2f" in decoded.lower() or "%5c" in decoded.lower():
         return "reject", None
     return "ok", decoded

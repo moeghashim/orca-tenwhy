@@ -720,7 +720,11 @@ class ImageBriefResolverTests(unittest.TestCase):
             (dist / "public" / "`hero.svg'").write_text("<svg/>")
             (dist / "public" / "hero.svg'").write_text("<svg/>")
             self.assertIsNotNone(mod.resolve_in_dist(dist, dist / "index.html", "/public/hero.svg", image_brief=True))
-            for bad in ("`/public/hero.svg'", "/public/hero.svg'", "\"/public/hero.svg", "/public/`hero.svg'"):
+            (dist / "public" / "hero'.svg").write_text("<svg/>")
+            (dist / "public" / "hero`.svg").write_text("<svg/>")
+            (dist / "public" / 'hero".svg').write_text("<svg/>")
+            for bad in ("`/public/hero.svg'", "/public/hero.svg'", "\"/public/hero.svg", "/public/`hero.svg'",
+                        "/public/hero%27.svg", "/public/hero%60.svg", "/public/hero%22.svg"):
                 self.assertTrue(mod.url_rejected(bad, image_brief=True), bad)
                 self.assertEqual(mod.resolve_in_dist(dist, dist / "index.html", bad, image_brief=True), pathlib.Path("/__rejected__"), bad)
             # non-brief link checking is unchanged (quotes are simply not resolvable paths there)
