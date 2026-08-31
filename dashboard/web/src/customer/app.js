@@ -73,7 +73,14 @@ export function renderStart(onSubmit) {
   );
 }
 
-export function renderLoading({ events = [], loop_runs = [], engagement = null, rebuilding = false } = {}) {
+export function renderLoading({
+  events = [],
+  loop_runs = [],
+  engagement = null,
+  rebuilding = false,
+  approvals = [],
+  staleWebsiteRunIds,
+} = {}) {
   if (engagement?.status === "needs_human") {
     return el(
       "div",
@@ -83,7 +90,7 @@ export function renderLoading({ events = [], loop_runs = [], engagement = null, 
       el("div", { class: "pause" }, "we've paused to check something — we'll pick this up"),
     );
   }
-  const prog = loadingProgress({ events, loop_runs });
+  const prog = loadingProgress({ events, loop_runs, approvals, staleWebsiteRunIds });
   let idx = prog.activeIndex < 0 ? 4 : prog.activeIndex;
   if (rebuilding && prog.completed < 4) idx = 3;
   const ph = rebuilding
@@ -264,6 +271,8 @@ export function renderCustomerApp(root, {
   launching = false,
   showNotes = false,
   rebuilding = false,
+  approvals = [],
+  staleWebsiteRunIds,
 } = {}) {
   const route = parseCustomerHash(hash);
   root.replaceChildren();
@@ -272,7 +281,7 @@ export function renderCustomerApp(root, {
     return root;
   }
   if (route.view === "loading" || (route.view === "start" && engagement)) {
-    root.append(renderLoading({ events, loop_runs, engagement, rebuilding }));
+    root.append(renderLoading({ events, loop_runs, engagement, rebuilding, approvals, staleWebsiteRunIds }));
     return root;
   }
   root.append(renderStart(onCreate || (() => {})));

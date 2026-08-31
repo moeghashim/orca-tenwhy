@@ -107,12 +107,16 @@ export function engagementBundle(db, engagementId, repoRoot) {
       return { id: e.id, kind: e.kind, loop_run_id: e.loop_run_id, payload, created_at: e.created_at };
     });
   const last = db.prepare("SELECT MAX(id) AS id FROM events WHERE engagement_id = ?").get(engagementId);
+  const approvals = db
+    .prepare("SELECT * FROM approvals WHERE engagement_id = ? ORDER BY created_at, id")
+    .all(engagementId);
   return {
     engagement: eng,
     loop_runs,
     iterations,
     gate_checks,
     events,
+    approvals,
     lastEventId: last?.id ?? 0,
     repo_dir: customerRepoDir(eng, repoRoot, db),
   };

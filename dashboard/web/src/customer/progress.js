@@ -26,9 +26,47 @@ function payloadPassed(p) {
   return p.passed === true || p.passed === 1 || p.allPassed === true;
 }
 
-export function loadingProgress({ events = [], loop_runs = [] } = {}) {
+/** Website runs whose started_at precedes the latest change-request cutoff. */
+export function deriveStaleWebsiteRunIds({ events = [], loop_runs = [], approvals = [] } = {}) {
+  const changeEvents = (events || []).filter((e) => e.kind === "engagement.change_requested");
+  const reqs = (approvals || []).filter((a) => a.action === "request_changes");
+  if (!changeEvents.length && !reqs.length) return new Set();
+
+  let keepId = null;
+  let cutoff = null;
+  if (changeEvents.length) {
+    const latest = changeEvents.reduce((a, b) => ((Number(a.id) || 0) >= (Number(b.id) || 0) ? a : b));
+    keepId = latest.loop_run_id || latest.payload?.runId || null;
+    cutoff = latest.created_at || null;
+  }
+  if (reqs.length) {
+    const latestA = reqs.reduce((a, b) => (String(a.created_at || "") > String(b.created_at || "") ? a : b));
+    if (!cutoff || String(latestA.created_at || "") >= String(cutoff)) {
+      cutoff = latestA.created_at || cutoff;
+      if (!changeEvents.length) keepId = null;
+    }
+  }
+
+  const ids = new Set();
+  for (const r of loop_runs || []) {
+    if (r.loop_name !== "website") continue;
+    if (keepId && r.id === keepId) continue;
+    if (keepId) {
+      ids.add(r.id);
+      continue;
+    }
+    if (!r.started_at || !cutoff || r.started_at <= cutoff) ids.add(r.id);
+  }
+  return ids;
+}
+
+export function loadingProgress({ events = [], loop_runs = [], approvals = [], staleWebsiteRunIds } = {}) {
+  const stale = new Set([
+    ...(staleWebsiteRunIds || []),
+    ...deriveStaleWebsiteRunIds({ events, loop_runs, approvals }),
+  ]);
   const runsById = new Map((loop_runs || []).map((r) => [r.id, r]));
-  const list = events || [];
+  const list = (events || []).filter((e) => !(e.loop_run_id && stale.has(e.loop_run_id)));
   let completed = 0;
   if (list.some((e) => e.kind === "loop_run.started" && loopNameOf(e, runsById) === "company-research")) {
     completed = 1;

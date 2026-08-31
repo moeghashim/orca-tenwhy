@@ -1,4 +1,5 @@
 import { parseCustomerHash } from "./app.js";
+import { deriveStaleWebsiteRunIds } from "./progress.js";
 
 export function createCustomerState() {
   return {
@@ -18,6 +19,7 @@ export function createCustomerState() {
     lastEventId: 0,
     resultsLoaded: false,
     navigateTo: null,
+    approvals: [],
     staleWebsiteRunIds: new Set(),
   };
 }
@@ -47,16 +49,38 @@ function mergeRuns(state, rows) {
   state.loop_runs = [...byId.values()];
 }
 
+function mergeApprovals(state, rows) {
+  if (!Array.isArray(rows)) return;
+  const byId = new Map((state.approvals || []).map((a) => [a.id, a]));
+  for (const a of rows) byId.set(a.id, { ...byId.get(a.id), ...a });
+  state.approvals = [...byId.values()];
+}
+
+function refreshStale(state, incoming) {
+  const events = incoming
+    ? [...state.events, incoming]
+    : state.events;
+  const derived = deriveStaleWebsiteRunIds({
+    events,
+    loop_runs: state.loop_runs,
+    approvals: state.approvals,
+  });
+  state.staleWebsiteRunIds = new Set([...(state.staleWebsiteRunIds || []), ...derived]);
+}
+
 export function applyPatch(state, p) {
   if (!p) return state;
+  if (p.entities?.loop_runs) mergeRuns(state, p.entities.loop_runs);
+  if (p.entities?.approvals) mergeApprovals(state, p.entities.approvals);
+  const incoming = p.kind
+    ? { id: p.id, kind: p.kind, loop_run_id: p.loop_run_id, payload: p.payload || {}, created_at: p.created_at }
+    : null;
+  refreshStale(state, incoming);
   const stale = state.staleWebsiteRunIds || new Set();
-  if (p.kind) {
-    if (!(p.loop_run_id && stale.has(p.loop_run_id))) {
-      state.events = [...state.events, { id: p.id, kind: p.kind, loop_run_id: p.loop_run_id, payload: p.payload || {} }];
-    }
+  if (incoming && !(incoming.loop_run_id && stale.has(incoming.loop_run_id))) {
+    state.events = [...state.events, incoming];
   }
   if (p.id) state.lastEventId = Math.max(state.lastEventId, Number(p.id) || 0);
-  if (p.entities?.loop_runs) mergeRuns(state, p.entities.loop_runs);
   if (p.entities?.engagements?.[0]) {
     state.engagement = { ...state.engagement, ...p.entities.engagements[0] };
   }
@@ -150,7 +174,16 @@ export function createCustomerSession(deps) {
     state.engagement = bundle.engagement;
     state.events = bundle.events || [];
     state.loop_runs = bundle.loop_runs || [];
+    state.approvals = bundle.approvals || [];
     state.lastEventId = bundle.lastEventId || 0;
+    state.staleWebsiteRunIds = deriveStaleWebsiteRunIds({
+      events: state.events,
+      loop_runs: state.loop_runs,
+      approvals: state.approvals,
+    });
+    if (state.staleWebsiteRunIds.size && bundle.engagement?.status === "running") {
+      state.rebuilding = true;
+    }
     connectEvents(id);
     if (bundle.engagement?.status === "awaiting_approval" || bundle.engagement?.status === "complete") {
       if (bundle.engagement.status === "complete") {

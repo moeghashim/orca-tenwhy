@@ -294,6 +294,12 @@ test("awaiting_approval SSE patch loads research before rendering results", asyn
   globalThis.document = dom.window.document;
   const root = document.getElementById("app");
   let hash = "#/e/eng_x";
+  const calls = [];
+  let status = "running";
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
   const session = createCustomerSession({
     EventSource: FakeEventSource,
     getHash: () => hash,
@@ -301,17 +307,21 @@ test("awaiting_approval SSE patch loads research before rendering results", asyn
       hash = h;
     },
     fetch: async (url) => {
-      if (String(url).includes("/research")) {
+      const path = String(url);
+      calls.push(path);
+      if (path.includes("/research")) {
+        await gate;
         return jsonRes({
           research: { company: { summary: "Neighborhood cafe" }, competitors: [], enhancement_ideas: [] },
           comparison: { columns: [{ label: "customer product" }], rows: [{ cells: [{ value: "Drip", state: "valid" }] }] },
         });
       }
-      if (String(url).includes("preview-manifest")) {
+      if (path.includes("preview-manifest")) {
+        await gate;
         return jsonRes({ pages: [{ path: "/index.html", title: "Harbor & Finch" }] });
       }
       return jsonRes({
-        engagement: { id: "eng_x", status: "awaiting_approval" },
+        engagement: { id: "eng_x", status },
         events: [],
         loop_runs: [],
         lastEventId: 0,
@@ -330,11 +340,25 @@ test("awaiting_approval SSE patch loads research before rendering results", asyn
     },
   });
   await session.paint();
-  await FakeEventSource.last.emit({
+  assert.equal(hash, "#/e/eng_x");
+  assert.equal(root.querySelector("[data-approve]"), null);
+  assert.doesNotMatch(root.textContent, /Neighborhood cafe/);
+  const before = calls.length;
+  status = "awaiting_approval";
+  const pending = FakeEventSource.last.emit({
     id: 1,
     kind: "engagement.awaiting_approval",
     entities: { engagements: [{ id: "eng_x", status: "awaiting_approval" }] },
   });
+  await Promise.resolve();
+  await Promise.resolve();
+  const afterPatch = calls.slice(before);
+  assert.ok(afterPatch.some((u) => u.includes("/research")), afterPatch);
+  assert.ok(afterPatch.some((u) => u.includes("preview-manifest")), afterPatch);
+  assert.equal(root.querySelector("[data-approve]"), null);
+  assert.doesNotMatch(root.textContent, /Neighborhood cafe/);
+  release();
+  await pending;
   await session.paint();
   assert.equal(hash, "#/e/eng_x/results");
   assert.match(root.textContent, /Neighborhood cafe/);
@@ -417,6 +441,87 @@ test("request-changes clears website step events until the new run's gate passes
     payload: { passed: true },
   });
   assert.equal(loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs }).completed, 5);
+});
+
+test("reload mid-rebuild does not mark step 5 done until the new website run's gate passes", async () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  let hash = "#/e/eng_x";
+  const loop_runs = [
+    { id: "run_res", loop_name: "company-research", started_at: "2026-08-30T20:00:00Z" },
+    { id: "run_web", loop_name: "website", started_at: "2026-08-30T20:10:00Z" },
+    { id: "run_web2", loop_name: "website", started_at: "2026-08-30T21:00:00Z" },
+  ];
+  const events = [
+    { id: 1, kind: "loop_run.started", loop_run_id: "run_res", payload: { loopName: "company-research" }, created_at: "2026-08-30T20:00:00Z" },
+    { id: 2, kind: "iteration.recorded", loop_run_id: "run_res", payload: { n: 1 }, created_at: "2026-08-30T20:05:00Z" },
+    { id: 3, kind: "gate.checked", loop_run_id: "run_res", payload: { passed: true }, created_at: "2026-08-30T20:06:00Z" },
+    { id: 4, kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1 }, created_at: "2026-08-30T20:15:00Z" },
+    { id: 5, kind: "gate.checked", loop_run_id: "run_web", payload: { passed: true }, created_at: "2026-08-30T20:20:00Z" },
+    { id: 6, kind: "engagement.change_requested", loop_run_id: "run_web2", payload: { runId: "run_web2" }, created_at: "2026-08-30T21:00:00Z" },
+    { id: 7, kind: "iteration.recorded", loop_run_id: "run_web2", payload: { n: 1 }, created_at: "2026-08-30T21:01:00Z" },
+  ];
+  const approvals = [{ id: "apr_1", action: "request_changes", created_at: "2026-08-30T20:59:00Z" }];
+  const session = createCustomerSession({
+    EventSource: FakeEventSource,
+    getHash: () => hash,
+    setHash: (h) => {
+      hash = h;
+    },
+    fetch: async (url) => {
+      if (String(url).includes("/research") || String(url).includes("preview-manifest")) {
+        return jsonRes({ research: null, comparison: null, pages: [] });
+      }
+      return jsonRes({
+        engagement: { id: "eng_x", status: "running" },
+        events,
+        loop_runs,
+        approvals,
+        lastEventId: 7,
+      });
+    },
+    render: (state) => {
+      renderCustomerApp(root, {
+        hash,
+        engagement: state.engagement,
+        events: state.events,
+        loop_runs: state.loop_runs,
+        approvals: state.approvals,
+        staleWebsiteRunIds: state.staleWebsiteRunIds,
+        rebuilding: state.rebuilding,
+      });
+    },
+  });
+  await session.paint();
+  assert.equal(hash, "#/e/eng_x");
+  assert.equal(session.state.rebuilding, true);
+  assert.ok(session.state.staleWebsiteRunIds.has("run_web"));
+  assert.equal(session.state.staleWebsiteRunIds.has("run_web2"), false);
+  const mid = loadingProgress({
+    events: session.state.events,
+    loop_runs: session.state.loop_runs,
+    approvals: session.state.approvals,
+  });
+  assert.equal(mid.completed, 4, mid);
+  assert.equal(root.querySelector("[data-step='5']").classList.contains("done"), false);
+  await FakeEventSource.last.emit({
+    id: 11,
+    kind: "gate.checked",
+    loop_run_id: "run_web2",
+    payload: { passed: true },
+  });
+  assert.equal(
+    loadingProgress({
+      events: session.state.events,
+      loop_runs: session.state.loop_runs,
+      approvals: session.state.approvals,
+    }).completed,
+    5,
+  );
+  await session.paint();
+  assert.equal(root.querySelector("[data-step='5']").classList.contains("done"), true);
 });
 
 test("approve and request-changes treat only 2xx as success", async () => {
