@@ -634,54 +634,96 @@ def srcset_urls(value: str) -> list[str]:
     return urls
 
 
-def is_ignored(url: str) -> bool:
+def split_off_query_fragment(url: str) -> str:
     s = url.strip()
-    if not s or s.startswith("#"):
-        return True
-    lower = s.lower()
-    return lower.startswith(IGNORE_SCHEMES)
+    hash_i = s.find("#")
+    if hash_i >= 0:
+        s = s[:hash_i]
+    q_i = s.find("?")
+    if q_i >= 0:
+        s = s[:q_i]
+    return s
+
+
+def is_external_scheme(path: str) -> bool:
+    lower = path.lower()
+    return lower.startswith(IGNORE_SCHEMES) or path.startswith("//")
+
+
+def decode_path_once(path: str) -> str | None:
+    out: list[str] = []
+    i = 0
+    while i < len(path):
+        if path[i] == "%":
+            hexes = path[i + 1 : i + 3]
+            if len(hexes) != 2 or any(c not in "0123456789abcdefABCDEF" for c in hexes):
+                return None
+            out.append(chr(int(hexes, 16)))
+            i += 3
+        else:
+            out.append(path[i])
+            i += 1
+    return "".join(out)
+
+
+def has_dot_dot_segment(path: str) -> bool:
+    return any(seg == ".." for seg in path.replace("\\", "/").split("/"))
+
+
+def inspect_ref(url: str, *, image_brief: bool = False) -> tuple[str, str | None]:
+    raw = url.strip()
+    if not raw or raw.startswith("#"):
+        return "ignore", None
+    path = split_off_query_fragment(raw)
+    if is_external_scheme(path):
+        return ("reject" if image_brief else "ignore"), None
+    lower = path.lower()
+    if "\x00" in path or "\\" in path or "%00" in lower or "%2f" in lower or "%5c" in lower:
+        return "reject", None
+    if has_dot_dot_segment(path):
+        return "reject", None
+    decoded = decode_path_once(path)
+    if decoded is None:
+        return "reject", None
+    if "\x00" in decoded or "\\" in decoded or has_dot_dot_segment(decoded):
+        return "reject", None
+    if "%2f" in decoded.lower() or "%5c" in decoded.lower():
+        return "reject", None
+    return "ok", decoded
+
+
+def is_ignored(url: str) -> bool:
+    return inspect_ref(url)[0] == "ignore"
 
 
 def strip_url(url: str) -> str:
-    s = url.strip().split("#", 1)[0].split("?", 1)[0]
-    return unquote(s)
+    status, decoded = inspect_ref(url)
+    if decoded is not None:
+        return decoded
+    return split_off_query_fragment(url)
 
 
-def url_rejected(url: str) -> bool:
-    raw = url.strip()
-    if "\x00" in raw or "\\" in raw:
-        return True
-    if raw.startswith("//"):
-        return True
-    lower = raw.lower()
-    if "%00" in lower or "%5c" in lower:
-        return True
-    if "%2e" in lower or "%2f" in lower:
-        return True
-    decoded = unquote(raw)
-    if "\x00" in decoded or "\\" in decoded:
-        return True
-    return False
+def url_rejected(url: str, *, image_brief: bool = False) -> bool:
+    return inspect_ref(url, image_brief=image_brief)[0] == "reject"
 
 
 def resolve_in_dist(dist: Path, from_file: Path, url: str) -> Path | None:
-    if url_rejected(url):
-        return Path("/__rejected__")
-    raw = strip_url(url)
-    if is_ignored(raw):
+    status, decoded = inspect_ref(url)
+    if status == "ignore":
         return None
+    if status == "reject" or decoded is None:
+        return Path("/__rejected__")
+    raw = decoded
     while raw.startswith("./"):
         raw = raw[2:]
     dist_real = dist.resolve()
+    from_posix = from_file.parent.resolve().as_posix()
     if raw.startswith("/"):
-        joined = posixpath.normpath("/" + raw.lstrip("/"))
-        if joined.startswith("/..") or joined == "/..":
-            return Path("/__outside_dist__")
-        target = dist_real.joinpath(*joined.lstrip("/").split("/")) if joined != "/" else dist_real
+        joined = posixpath.normpath(posixpath.join("/", raw.lstrip("/")))
+        target = dist_real.joinpath(*joined.lstrip("/").split("/")) if joined not in ("/", "") else dist_real
     else:
-        start = from_file.parent.resolve()
-        joined = posixpath.normpath(str(Path(raw).as_posix()))
-        target = start.joinpath(*joined.split("/")) if joined not in (".", "") else start
+        joined = posixpath.normpath(posixpath.join(from_posix, raw))
+        target = Path(joined)
     try:
         if target.exists() or target.is_symlink():
             real = target.resolve()
@@ -818,11 +860,15 @@ def links_ok(workdir: Path) -> dict:
     unwired: list[str] = []
     missing_files: list[str] = []
     for p in brief_paths:
-        rel = p.lstrip("/")
+        status, decoded = inspect_ref(p, image_brief=True)
+        if status != "ok" or decoded is None:
+            broken.append(f"IMAGE_BRIEF {p}")
+            continue
+        rel = decoded.lstrip("/")
         on_disk = (dist / rel).is_file() if dist.is_dir() else False
         if not on_disk:
             missing_files.append(p)
-        wired = p in referenced or ("/" + rel) in referenced or rel in referenced
+        wired = p in referenced or decoded in referenced or ("/" + rel) in referenced or rel in referenced
         if not wired:
             unwired.append(p)
 

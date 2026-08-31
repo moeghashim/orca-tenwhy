@@ -322,7 +322,28 @@ class WebsiteGateTests(unittest.TestCase):
     def test_fail_links_escape(self):
         checks = self._assert_case("fail_links_escape", 1, "links_ok")
         detail = checks[2]["detail"]
-        self.assertTrue("outside.png" in detail or "%2e" in detail or "secret.png" in detail, detail)
+        self.assertTrue("outside.png" in detail or "/../" in detail, detail)
+        self.assertTrue("%2e%2e" in detail or "secret.png" in detail, detail)
+        self.assertTrue("..%2f" in detail or "secret2.png" in detail, detail)
+        self.assertTrue("%zz" in detail, detail)
+        self.assertTrue("foo" in detail and "bar.png" in detail, detail)
+        self.assertIn("IMAGE_BRIEF", detail)
+
+    def test_inspect_ref_order(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import inspect_ref
+
+        self.assertEqual(inspect_ref("https://example.com/x")[0], "ignore")
+        self.assertEqual(inspect_ref("https://example.com/x", image_brief=True)[0], "reject")
+        self.assertEqual(inspect_ref("//cdn.example/x")[0], "ignore")
+        self.assertEqual(inspect_ref("//cdn.example/x", image_brief=True)[0], "reject")
+        self.assertEqual(inspect_ref("/../outside.png")[0], "reject")
+        self.assertEqual(inspect_ref("%2e%2e/secret.png")[0], "reject")
+        self.assertEqual(inspect_ref("..%2fsecret2.png")[0], "reject")
+        self.assertEqual(inspect_ref("%zz/bad.png")[0], "reject")
+        self.assertEqual(inspect_ref("foo\\bar.png")[0], "reject")
+        self.assertEqual(inspect_ref("/images/../pwn.svg", image_brief=True)[0], "reject")
+        self.assertEqual(inspect_ref("/images/hero.svg")[0], "ok")
 
     def test_dist_symlink_escape_is_broken(self):
         sys.path.insert(0, str(GATE.parent))

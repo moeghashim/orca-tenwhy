@@ -11,6 +11,7 @@ trace: fixture://design
 | whitening | /images/whitening.svg | Whitening tray | 800x600 |
 | aligners | /images/aligners.svg | Clear aligner tray | 800x600 |
 | checkup | /images/checkup.svg | Hygiene checkup | 800x600 |
+| pwn | /images/../pwn.svg | escape | 1x1 |
 
 ## History
 - 2026-08-30T22:00:00Z — materialized design (trace: fixture://design)
