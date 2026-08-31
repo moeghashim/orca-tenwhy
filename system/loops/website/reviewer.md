@@ -18,6 +18,12 @@ Site URL: {{site_url}}
 4. Copy grounded in research: company name + ≥ 3 product names from RESEARCH.json present in `dist/`.
 5. **Lighthouse ≥ 85** (performance + accessibility categories) against `vite preview` of `dist/`.
 
+## What you judge vs what the gate verifies mechanically
+
+- Checks **1** (tokens.json / logo.svg validity) and **5** (Lighthouse) are **verified mechanically by the gate script after you approve** — the executor cannot run Lighthouse and does not author `brand/*` (the designer step did). Do **not** ask the executor to run Lighthouse or to provide brand files. Judge check 1 only from the `brand/` artifacts shown in the manifest (say `1. pass` if `tokens.json` and `logo.svg` look well-formed there); judge check 5 only for obvious performance/accessibility problems you can see in the sources (huge inline assets, missing `<html lang>`, missing `alt`, blocking scripts) — otherwise `5. pass (gate will measure)`.
+- Checks **2–4** are what the executor controls: build correctness of the Vite project, internal links and IMAGE_BRIEF placeholders, and copy grounded in `RESEARCH.json`. Be strict there.
+- `approve` means **"run the gate now"**; the gate is the real exit. Do not withhold approval for things only the gate can measure.
+
 ## Required output
 
 - Assess each check by number (`1.`–`5.`), quoting the offending item when failing.

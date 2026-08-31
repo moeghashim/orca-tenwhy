@@ -109,7 +109,9 @@ function walkFiles(dir, out = []) {
 
 function isTextFile(rel, abs) {
   const ext = path.extname(rel).toLowerCase();
-  if (ext === ".svg") return false;
+  // brand/*.svg (the designer's logo) is inlined so the reviewer can judge check 1;
+  // other SVGs (generated placeholders under public/) stay path + size only.
+  if (ext === ".svg") return rel.startsWith("brand/");
   if (TEXT_EXT.has(ext)) return true;
   try {
     const buf = fs.readFileSync(abs);

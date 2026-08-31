@@ -373,3 +373,17 @@ echo '{"type":"session","id":"stub"}'
   assert.equal(argv[toolsIdx + 1], "read,write,edit,ls,grep,find");
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test("manifest inlines brand/logo.svg text but lists public SVG placeholders by path + size", () => {
+  const wd = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-manifest-svg-"));
+  fs.mkdirSync(path.join(wd, "brand"), { recursive: true });
+  fs.mkdirSync(path.join(wd, "website/public/images"), { recursive: true });
+  fs.writeFileSync(path.join(wd, "brand/logo.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><text>LOGO-TEXT-MARK</text></svg>');
+  fs.writeFileSync(path.join(wd, "website/public/images/hero.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><text>HERO-PLACEHOLDER-MARK</text></svg>');
+  fs.writeFileSync(path.join(wd, "website/index.html"), "<html></html>");
+  const m = renderManifest({ workdir: wd });
+  assert.match(m, /LOGO-TEXT-MARK/);
+  assert.doesNotMatch(m, /HERO-PLACEHOLDER-MARK/);
+  assert.match(m, /hero\.svg \(\d+ bytes\)/);
+  fs.rmSync(wd, { recursive: true, force: true });
+});
