@@ -319,6 +319,18 @@ class WebsiteGateTests(unittest.TestCase):
         checks = self._assert_case("fail_links_srcset", 1, "links_ok")
         self.assertIn("srcset", checks[2]["detail"])
 
+    def test_srcset_data_uri_commas_are_not_candidates(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import srcset_urls
+
+        value = (
+            'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1,2" height="3,4"></svg> 1x, '
+            "/images/hero.svg 2x"
+        )
+        urls = srcset_urls(value)
+        self.assertEqual(urls, ["/images/hero.svg"])
+        self.assertFalse(any(u.lower().startswith("data:") or "width=" in u for u in urls))
+
     def test_fail_links_escape(self):
         checks = self._assert_case("fail_links_escape", 1, "links_ok")
         detail = checks[2]["detail"]

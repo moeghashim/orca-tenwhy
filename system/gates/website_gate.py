@@ -21,7 +21,7 @@ import time
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 import posixpath
 
 import jsonschema
@@ -627,10 +627,14 @@ def css_urls(text: str) -> list[str]:
 
 def srcset_urls(value: str) -> list[str]:
     urls = []
-    for part in value.split(","):
+    for part in re.split(r",(?=\s|$)", value):
         token = part.strip().split()
-        if token:
-            urls.append(token[0])
+        if not token:
+            continue
+        url = token[0]
+        if url.lower().startswith("data:"):
+            continue
+        urls.append(url)
     return urls
 
 
