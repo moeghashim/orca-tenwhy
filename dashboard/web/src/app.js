@@ -109,6 +109,12 @@ function needsCount(snap) {
   return (snap?.loop_runs || []).filter((r) => r.status === "needs_human").length;
 }
 
+function activeEngagements(snap) {
+  return new Set(
+    (snap?.loop_runs || []).filter((r) => r.status === "running" || r.status === "queued").map((r) => r.engagement_id),
+  ).size;
+}
+
 export function connLabel(sse) {
   if (sse.state === "live") {
     return { label: "live", sub: "SSE /api/events", fg: tokens.color.status.passed.fg, dot: tokens.color.status.passed.fg, anim: "lgPulse 1.6s ease-in-out infinite" };
@@ -539,9 +545,22 @@ export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { w
     );
   }
   const content = el("div", { class: "content" });
-  const title =
-    route.view === "runs" ? "Runs" : route.view === "failures" ? "Failures" : route.view === "customers" ? "Customers" : null;
-  if (title) content.append(el("div", { class: "h1" }, title));
+  if (route.view === "runs") {
+    const nEng = snap?.engagements?.length ?? 0;
+    const nActive = activeEngagements(snap);
+    content.append(
+      el(
+        "div",
+        { class: "page-head" },
+        el("div", { class: "h1" }, "Runs"),
+        el("div", { class: "page-sum", "data-runs-summary": "1" }, `${nEng} engagements · ${nActive} active · sorted by last event`),
+      ),
+    );
+  } else if (route.view === "failures") {
+    content.append(el("div", { class: "h1" }, "Failures"));
+  } else if (route.view === "customers") {
+    content.append(el("div", { class: "h1" }, "Customers"));
+  }
   let body;
   if (route.view === "runs") body = renderRuns(store, now, go);
   else if (route.view === "loop") body = renderLoop(store, route, now, go);

@@ -162,6 +162,12 @@ test("sidebar wordmark is one nowrap line tenwhy / loop graph with operations co
   assert.match(css, /\.wordmark\s*\{[^}]*white-space:\s*nowrap/s);
 });
 
+test("Runs header summary lists engagement and active counts", () => {
+  const { root } = mount("#/runs");
+  const sum = root.querySelector("[data-runs-summary]");
+  assert.equal(sum.textContent, "3 engagements · 1 active · sorted by last event");
+});
+
 test("runs view: row count, 41px row height, verbatim badge, iteration 2/4 + 2 filled segments, amber attempt dots, needs_human banner", () => {
   const { root } = mount("#/runs");
   const rows = root.querySelectorAll("[data-run-row]");
