@@ -1,5 +1,8 @@
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { localRepoUrl, verifyGithubUrl } from "./customer_repo.mjs";
 import { queueLoopRun } from "./orchestrator.mjs";
-import { insertEvent, openDb, prefixedId, utcNow } from "./util.mjs";
+import { ROOT, insertEvent, openDb, prefixedId, utcNow } from "./util.mjs";
 
 export function cmdStatus({ engagementId, dbPath }) {
   const db = openDb(dbPath);
@@ -79,6 +82,57 @@ export function cmdApprove({ engagementId, dbPath }) {
     const id = insertApproval(db, { engagementId, action: "approve", notes: null });
     process.stdout.write(`${id}\n`);
     return { id };
+  } finally {
+    db.close();
+  }
+}
+
+export function cmdRepairRepoUrl({
+  engagementId,
+  dbPath,
+  repoRoot = ROOT,
+  backend = process.env.TENWHY_REPO_BACKEND || "github",
+  spawn = spawnSync,
+}) {
+  if (!engagementId) {
+    throw Object.assign(new Error("repair-repo-url requires <engagement-id>"), { exitCode: 1 });
+  }
+  const db = openDb(dbPath);
+  try {
+    const eng = db.prepare("SELECT * FROM engagements WHERE id = ?").get(engagementId);
+    if (!eng) throw Object.assign(new Error(`engagement not found: ${engagementId}`), { exitCode: 1 });
+    const created = db
+      .prepare(
+        "SELECT payload FROM events WHERE engagement_id = ? AND kind = 'engagement.created' ORDER BY id LIMIT 1",
+      )
+      .get(engagementId);
+    let slug = null;
+    try {
+      slug = created?.payload ? JSON.parse(created.payload).slug : null;
+    } catch {
+      slug = null;
+    }
+    if (!slug) {
+      throw Object.assign(new Error("engagement has no slug in engagement.created"), { exitCode: 1 });
+    }
+    const remotesDir = path.join(repoRoot, "state/remotes");
+    const url =
+      backend === "local"
+        ? localRepoUrl(slug, remotesDir)
+        : verifyGithubUrl(slug, spawn);
+    const previous = eng.repo_url;
+    db.prepare("UPDATE engagements SET repo_url = ?, updated_at = ? WHERE id = ?").run(
+      url,
+      utcNow(),
+      engagementId,
+    );
+    insertEvent(db, {
+      engagementId,
+      kind: "engagement.repo_url_repaired",
+      payload: { previous, repo_url: url, slug },
+    });
+    process.stdout.write(`${url}\n`);
+    return { repo_url: url, previous };
   } finally {
     db.close();
   }

@@ -1,7 +1,37 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { ROOT, isIsoTimestamp, runGit, slugify, utcNow } from "./util.mjs";
+
+export const GITHUB_OWNER = "moeghashim";
+
+export function githubRepoName(slug) {
+  return `tenwhy-${slug}`;
+}
+
+export function githubHttpsUrl(slug) {
+  return `https://github.com/${GITHUB_OWNER}/${githubRepoName(slug)}`;
+}
+
+export function localRepoUrl(slug, remotesDir) {
+  return pathToFileURL(path.resolve(remotesDir, `${slug}.git`)).href;
+}
+
+export function verifyGithubUrl(slug, spawn = spawnSync) {
+  const expected = githubHttpsUrl(slug);
+  const name = `${GITHUB_OWNER}/${githubRepoName(slug)}`;
+  const view = spawn("gh", ["repo", "view", name, "--json", "url", "-q", ".url"], { encoding: "utf8" });
+  if (view.error?.code === "ENOENT") return expected;
+  if (view.status !== 0) {
+    throw new Error(`gh repo view ${name} failed: ${(view.stderr || view.stdout || "").trim()}`);
+  }
+  const seen = (view.stdout || "").trim();
+  if (seen && seen !== expected) {
+    throw new Error(`github url mismatch for ${name}: expected ${expected}, gh says ${seen}`);
+  }
+  return expected;
+}
 
 const DEFAULT_TEMPLATE = path.join(ROOT, "templates/customer-repo");
 
@@ -94,12 +124,13 @@ export function publishCustomerRepo({
   slug,
   backend = process.env.TENWHY_REPO_BACKEND || "github",
   remotesDir = path.join(ROOT, "state/remotes"),
+  spawn = spawnSync,
 }) {
   if (backend === "local") {
     fs.mkdirSync(remotesDir, { recursive: true });
-    const bare = path.join(remotesDir, `${slug}.git`);
+    const bare = path.resolve(remotesDir, `${slug}.git`);
     if (!fs.existsSync(bare)) {
-      const init = spawnSync("git", ["init", "--bare", "-b", "main", bare], { encoding: "utf8" });
+      const init = spawn("git", ["init", "--bare", "-b", "main", bare], { encoding: "utf8" });
       if (init.status !== 0) {
         throw new Error(`git init --bare failed: ${init.stderr || init.stdout}`);
       }
@@ -111,20 +142,19 @@ export function publishCustomerRepo({
       runGit(dir, ["remote", "set-url", "origin", bare]);
     }
     runGit(dir, ["push", "-u", "origin", "HEAD"]);
-    return { repo_url: bare, backend: "local" };
+    return { repo_url: localRepoUrl(slug, remotesDir), backend: "local" };
   }
   if (backend === "github") {
-    const name = `tenwhy-${slug}`;
-    const result = spawnSync(
+    const name = `${GITHUB_OWNER}/${githubRepoName(slug)}`;
+    const result = spawn(
       "gh",
-      ["repo", "create", `moeghashim/${name}`, "--private", "--source", dir, "--remote", "origin", "--push"],
+      ["repo", "create", name, "--private", "--source", dir, "--remote", "origin", "--push"],
       { encoding: "utf8" },
     );
     if (result.status !== 0) {
       throw new Error(`gh repo create failed: ${result.stderr || result.stdout}`);
     }
-    const url = (result.stdout || "").trim().split(/\s+/).pop() || `https://github.com/moeghashim/${name}`;
-    return { repo_url: url, backend: "github" };
+    return { repo_url: verifyGithubUrl(slug, spawn), backend: "github" };
   }
   throw new Error(`unknown TENWHY_REPO_BACKEND: ${backend}`);
 }

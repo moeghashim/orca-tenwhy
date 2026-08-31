@@ -4,11 +4,12 @@ import { generateCustomerRepo, publishCustomerRepo, slugify } from "./customer_r
 import { ROOT, insertEvent, openDb, prefixedId, utcNow } from "./util.mjs";
 
 function usage() {
-  return `usage: loopctl <new|update|approve|request-changes|daemon|status> [args]
+  return `usage: loopctl <new|update|approve|request-changes|repair-repo-url|daemon|status> [args]
   loopctl new "<idea>" [--url <site>] [--name <customer>]
   loopctl update <engagement-id>
   loopctl approve <engagement-id>
   loopctl request-changes <engagement-id> --notes "<text>"
+  loopctl repair-repo-url <engagement-id>
   loopctl daemon [--interval-ms 2000]
   loopctl status [<engagement-id>]`;
 }
@@ -146,6 +147,11 @@ export async function main(argv = process.argv.slice(2)) {
     if (cmd === "request-changes") {
       const { cmdRequestChanges } = await import("./commands.mjs");
       cmdRequestChanges({ engagementId: rest[0], notes: parsed.flags.notes, dbPath: dbPath() });
+      return;
+    }
+    if (cmd === "repair-repo-url") {
+      const { cmdRepairRepoUrl } = await import("./commands.mjs");
+      cmdRepairRepoUrl({ engagementId: rest[0], dbPath: dbPath() });
       return;
     }
     if (cmd === "daemon") {
