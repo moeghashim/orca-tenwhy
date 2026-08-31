@@ -595,3 +595,46 @@ test("L: website prepare failure records design_spec and gate_failed", async (t)
   assert.ok(kinds(ctx.db, result.loopRunId).includes("gate.checked"));
   assert.ok(!kinds(ctx.db, result.loopRunId).includes("loop_run.prepared"));
 });
+
+test("M: prepare throw logs session, exit, ms, tools", async (t) => {
+  const ctx = setup();
+  t.after(() => {
+    ctx.db.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.join(ctx.workdir, "research"), { recursive: true });
+  fs.writeFileSync(
+    path.join(ctx.workdir, "research/RESEARCH.json"),
+    JSON.stringify({ company: { name: "Acme Dental", customer_products: [] } }),
+  );
+  const adapter = {
+    async run() {
+      const err = new Error("designer failed");
+      err.exitCode = 2;
+      err.toolCalls = 0;
+      throw err;
+    },
+  };
+  const { result, text } = await captureStdout(() =>
+    runLoop({
+      db: ctx.db,
+      dbPath: ctx.dbPath,
+      loopName: "website",
+      engagementId: ctx.engagementId,
+      attempt: 0,
+      workdir: ctx.workdir,
+      config: CONFIG,
+      adapter,
+      gateRunner: async () => {
+        throw new Error("gate must not run");
+      },
+    }),
+  );
+  assert.equal(result.status, "needs_human");
+  const prepEnd = text.split("\n").find((line) => /\bprepare end\b/.test(line));
+  assert.ok(prepEnd, `missing prepare end log: ${text}`);
+  assert.match(prepEnd, /\bsession=[0-9a-f-]{36}\b/i);
+  assert.match(prepEnd, /\bexit=2\b/);
+  assert.match(prepEnd, /\bms=\d+/);
+  assert.match(prepEnd, /\btools=0\b/);
+});

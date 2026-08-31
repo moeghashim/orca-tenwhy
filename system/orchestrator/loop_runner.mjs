@@ -382,9 +382,10 @@ export async function runLoop({
       logError("loop", "prepare end", {
         run: loopRunId,
         session: prepSessionId,
-        stderr: preview(err?.stderr || err?.message, 200),
         exit: err?.exitCode,
+        ms: Date.now() - prepStarted,
         tools: err?.toolCalls ?? 0,
+        stderr: preview(err?.stderr || err?.message, 200),
       });
       return failRunOnError(db, {
         engagementId,
