@@ -160,6 +160,41 @@ function runRowBackground(eng, run, store) {
   return flashed ? FLASH : nh ? "var(--status-needs_human-row)" : "#ffffff";
 }
 
+function paintBadge(node, kind, value) {
+  const s = statusOf(kind, value);
+  node.dataset.badge = value;
+  node.textContent = `${s.glyph} ${s.label}`;
+  node.style.background = s.bg;
+  node.style.borderColor = s.border;
+  node.style.color = s.fg;
+  return s;
+}
+
+function paintIterSegs(wrap, n, fg) {
+  wrap.dataset.iter = `${n}/4`;
+  const segs = wrap.querySelectorAll(".iter-seg");
+  segs.forEach((seg, i) => {
+    seg.style.background = i < n ? fg : tokens.color.border.default;
+    seg.dataset.filled = i < n ? "1" : "0";
+  });
+  const frac = wrap.querySelector(".frac");
+  if (frac) frac.textContent = `${n}/4`;
+}
+
+function paintAttDots(wrap, attempt) {
+  wrap.dataset.attempt = `${attempt}/2`;
+  const amber = attempt > 0;
+  const dots = wrap.querySelectorAll(".att-dot");
+  dots.forEach((dot, i) => {
+    const on = i < attempt;
+    dot.style.background = on ? (amber ? tokens.color.status.needs_human.fg : tokens.color.status.running.fg) : "transparent";
+    dot.dataset.on = on ? "1" : "0";
+    dot.dataset.amber = amber && on ? "1" : "0";
+  });
+  const frac = wrap.querySelector(".frac");
+  if (frac) frac.textContent = `${attempt}/2`;
+}
+
 function fillRunRow(row, eng, store, now) {
   const run = activeRun(store.snapshot, eng);
   row._run = run;
@@ -168,28 +203,50 @@ function fillRunRow(row, eng, store, now) {
   const attempt = run?.attempt ?? 0;
   row.style.height = ROW_H;
   row.style.background = runRowBackground(eng, run, store);
-  row.replaceChildren(
-    el(
-      "span",
-      { class: "eng-cell" },
-      el("span", { class: "eng-name" }, eng.customer_name || ""),
-      el("span", { class: "mono faint" }, eng.id),
-    ),
-    badge("engagement", eng.status),
-    el("span", { class: "mono loop" }, eng.active_loop || "—"),
-    iterSegs(n, st.fg),
-    attDots(attempt),
-    el(
-      "span",
-      {
-        class: "mono",
-        "data-last-event": "1",
-        style: { color: isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted },
-      },
-      rel(eng.last_event_at, now),
-    ),
-    el("span", { class: "note", "data-note": "1" }, eng.last_note || ""),
-  );
+  if (!row.querySelector("[data-note]")) {
+    row.append(
+      el(
+        "span",
+        { class: "eng-cell" },
+        el("span", { class: "eng-name" }, eng.customer_name || ""),
+        el("span", { class: "mono faint", "data-eng-id": "1" }, eng.id),
+      ),
+      badge("engagement", eng.status),
+      el("span", { class: "mono loop" }, eng.active_loop || "—"),
+      iterSegs(n, st.fg),
+      attDots(attempt),
+      el(
+        "span",
+        {
+          class: "mono",
+          "data-last-event": "1",
+          style: { color: isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted },
+        },
+        rel(eng.last_event_at, now),
+      ),
+      el("span", { class: "note", "data-note": "1" }, eng.last_note || ""),
+    );
+    return;
+  }
+  const name = row.querySelector(".eng-name");
+  const id = row.querySelector("[data-eng-id]");
+  const badgeEl = row.querySelector("[data-badge]");
+  const loop = row.querySelector(".loop");
+  const segs = row.querySelector("[data-iter]");
+  const dots = row.querySelector("[data-attempt]");
+  const time = row.querySelector("[data-last-event]");
+  const note = row.querySelector("[data-note]");
+  if (name) name.textContent = eng.customer_name || "";
+  if (id) id.textContent = eng.id;
+  if (badgeEl) paintBadge(badgeEl, "engagement", eng.status);
+  if (loop) loop.textContent = eng.active_loop || "—";
+  if (segs) paintIterSegs(segs, n, st.fg);
+  if (dots) paintAttDots(dots, attempt);
+  if (time) {
+    time.textContent = rel(eng.last_event_at, now);
+    time.style.color = isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted;
+  }
+  if (note) note.textContent = eng.last_note || "";
 }
 
 function makeRunRow(eng, store, now, go) {
@@ -213,18 +270,8 @@ function syncRunsTable(table, store, now, go) {
   const keep = new Set(engs.map((e) => e.id));
   for (const eng of engs) {
     const row = byId.get(eng.id);
-    if (row) {
-      const run = activeRun(store.snapshot, eng);
-      const affected = store.flashed.has(eng.id) || (run && store.flashed.has(run.id));
-      if (affected) fillRunRow(row, eng, store, now);
-      else {
-        const time = row.querySelector("[data-last-event]");
-        if (time) {
-          time.textContent = rel(eng.last_event_at, now);
-          time.style.color = isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted;
-        }
-      }
-    } else table.append(makeRunRow(eng, store, now, go));
+    if (row) fillRunRow(row, eng, store, now);
+    else table.append(makeRunRow(eng, store, now, go));
   }
   for (const row of existing) {
     if (!keep.has(row.getAttribute("data-row"))) row.remove();
@@ -294,7 +341,7 @@ function patchRunsShell(shell, table, { store, hash, now, go }, route) {
     if (banner) banner.replaceWith(html);
     else if (content) main.insertBefore(html, content);
   } else if (banner) banner.remove();
-  syncRunsTable(table, store, now, go);
+  if (table) syncRunsTable(table, store, now, go);
 }
 
 function renderRuns(store, now, go) {
@@ -323,6 +370,42 @@ function renderRuns(store, now, go) {
     el("span", {}, "rows update in place via SSE — no reordering while connected"),
   );
   return [table, legend];
+}
+
+function fillGateRow(row, g) {
+  const ok = g.passed === 1 || g.passed === true;
+  const gs = statusOf("gate", ok ? "pass" : "fail");
+  row.style.background = ok ? "transparent" : "var(--status-failed-tint)";
+  const glyph = row.querySelector("[data-gate-glyph]");
+  const name = row.querySelector("[data-gate-name]");
+  const state = row.querySelector("[data-gate-state]");
+  if (glyph) {
+    glyph.textContent = gs.glyph;
+    glyph.style.color = gs.fg;
+  }
+  if (name) name.textContent = g.check_name;
+  if (state) {
+    state.textContent = ok ? "pass" : "fail";
+    state.style.color = gs.fg;
+  }
+}
+
+function makeGateRow(g) {
+  const ok = g.passed === 1 || g.passed === true;
+  const gs = statusOf("gate", ok ? "pass" : "fail");
+  const row = el(
+    "div",
+    {
+      class: "gate-row",
+      "data-gate": g.id,
+      "data-row": g.id,
+      style: { background: ok ? "transparent" : "var(--status-failed-tint)" },
+    },
+    el("span", { "data-gate-glyph": "1", style: { color: gs.fg } }, gs.glyph),
+    el("span", { class: "mono", "data-gate-name": "1" }, g.check_name),
+    el("span", { class: "mono", "data-gate-state": "1", style: { color: gs.fg } }, ok ? "pass" : "fail"),
+  );
+  return row;
 }
 
 function renderLoop(store, route, now, go) {
@@ -423,19 +506,9 @@ function renderLoop(store, route, now, go) {
     );
   }
   const passed = gates.filter((g) => g.passed === 1 || g.passed === true).length;
-  const gateCard = el("div", { class: "card" }, el("div", { class: "card-h" }, "gate checks"));
+  const gateCard = el("div", { class: "card", "data-gate-card": "1" }, el("div", { class: "card-h" }, "gate checks"));
   for (const g of gates) {
-    const ok = g.passed === 1 || g.passed === true;
-    const gs = statusOf("gate", ok ? "pass" : "fail");
-    gateCard.append(
-      el(
-        "div",
-        { class: "gate-row", style: { background: ok ? "transparent" : "var(--status-failed-tint)" } },
-        el("span", { style: { color: gs.fg } }, gs.glyph),
-        el("span", { class: "mono" }, g.check_name),
-        el("span", { class: "mono", style: { color: gs.fg } }, ok ? "pass" : "fail"),
-      ),
-    );
+    gateCard.append(makeGateRow(g));
   }
   gateCard.append(el("div", { class: "faint mono gate-sum" }, `${passed}/${gates.length} passed · gate runs after reviewer approval`));
   const scrapeCard = el("div", { class: "card" }, el("div", { class: "card-h" }, "scrape provenance"));
@@ -502,6 +575,90 @@ function orderedFailures(store) {
   return out;
 }
 
+function fillFailCard(card, run, store, now) {
+  const snap = store.snapshot;
+  const eng = snap.engagements.find((e) => e.id === run.engagement_id);
+  const st = statusOf("run", run.status);
+  const failed = (snap.gate_checks || []).find((g) => g.loop_run_id === run.id && !g.passed);
+  const last = (snap.iterations || []).filter((i) => i.loop_run_id === run.id).at(-1);
+  const accent = run.status === "needs_human" ? tokens.color.status.needs_human.fg : tokens.color.status.failed.fg;
+  card.style.borderLeftColor = accent;
+  card._run = run;
+  card._eng = eng;
+  const badgeEl = card.querySelector("[data-badge]");
+  if (badgeEl) paintBadge(badgeEl, "run", run.status);
+  const name = card.querySelector(".eng-name");
+  if (name) name.textContent = eng?.customer_name || "";
+  const ids = card.querySelector("[data-fail-ids]");
+  if (ids) ids.textContent = `${eng?.id} / ${run.id}`;
+  const when = card.querySelector("[data-fail-when]");
+  if (when) when.textContent = rel(run.last_event_at, now);
+  const chip = card.querySelector(".fail-chip");
+  if (chip) chip.textContent = `✕ ${failed?.check_name || "—"}`;
+  const notes = card.querySelector("[data-fail-notes]");
+  if (notes) notes.textContent = `“${last?.reviewer_notes || ""}”`;
+  const adj = card.querySelector("[data-fail-adj]");
+  if (adj) {
+    adj.textContent = run.adjusted_instructions || "";
+    adj.style.color = run.status === "needs_human" ? st.fg : tokens.color.text.secondary;
+  }
+}
+
+function makeFailCard(run, store, now, go) {
+  const snap = store.snapshot;
+  const eng = snap.engagements.find((e) => e.id === run.engagement_id);
+  const card = el("div", {
+    class: "fail-card",
+    "data-row": run.id,
+    onClick: () => {
+      const e = card._eng;
+      const r = card._run;
+      if (e && r) go(`#/runs/${e.id}/${r.id}`);
+    },
+  });
+  card.append(
+    el(
+      "div",
+      { class: "fail-top" },
+      badge("run", run.status),
+      el("span", { class: "eng-name" }, ""),
+      el("span", { class: "mono faint", "data-fail-ids": "1" }, ""),
+      el("span", { class: "mono faint", "data-fail-when": "1" }, ""),
+    ),
+    el(
+      "div",
+      { class: "fail-grid" },
+      el("span", { class: "faint mono" }, "failed check"),
+      el("span", { class: "fail-chip" }, ""),
+      el("span", { class: "faint mono" }, "reviewer objection"),
+      el("span", { "data-fail-notes": "1" }, ""),
+      el("span", { class: "faint mono" }, "orchestrator adjustment"),
+      el("span", { class: "mono", "data-fail-adj": "1" }, ""),
+    ),
+  );
+  fillFailCard(card, run, store, now);
+  return card;
+}
+
+function syncFailures(list, store, now, go) {
+  const fails = orderedFailures(store);
+  const existing = [...list.querySelectorAll("[data-row]")];
+  const byId = new Map(existing.map((n) => [n.getAttribute("data-row"), n]));
+  const keep = new Set(fails.map((r) => r.id));
+  for (const run of fails) {
+    const card = byId.get(run.id);
+    if (card) fillFailCard(card, run, store, now);
+    else list.append(makeFailCard(run, store, now, go));
+  }
+  for (const card of existing) {
+    if (!keep.has(card.getAttribute("data-row"))) card.remove();
+  }
+  for (const run of fails) {
+    const card = list.querySelector(`[data-row="${run.id}"]`);
+    if (card) list.append(card);
+  }
+}
+
 function renderFailures(store, now, go) {
   const snap = store.snapshot;
   if (!snap) return loadingBlock();
@@ -510,41 +667,71 @@ function renderFailures(store, now, go) {
     return [emptyBlock("✓", "nothing blocked", "No gate_failed or needs_human runs. Loops are handling it.")];
   }
   const list = el("div", { class: "fail-list" });
-  for (const run of fails) {
-    const eng = snap.engagements.find((e) => e.id === run.engagement_id);
-    const st = statusOf("run", run.status);
-    const failed = (snap.gate_checks || []).find((g) => g.loop_run_id === run.id && !g.passed);
-    const last = (snap.iterations || []).filter((i) => i.loop_run_id === run.id).at(-1);
-    const accent = run.status === "needs_human" ? tokens.color.status.needs_human.fg : tokens.color.status.failed.fg;
-    const card = el("div", {
-      class: "fail-card",
-      "data-row": run.id,
-      style: { borderLeftColor: accent },
-      onClick: () => go(`#/runs/${eng.id}/${run.id}`),
-    });
-    card.append(
+  for (const run of fails) list.append(makeFailCard(run, store, now, go));
+  return [list];
+}
+
+function fillCustomerCard(card, eng, now) {
+  const st = statusOf("engagement", eng.status);
+  const dot = card.querySelector(".dot");
+  if (dot) dot.style.background = st.fg;
+  const name = card.querySelector(".eng-name");
+  if (name) name.textContent = eng.customer_name || "";
+  const id = card.querySelector("[data-cust-id]");
+  if (id) id.textContent = eng.id;
+  const label = card.querySelector("[data-cust-status]");
+  if (label) {
+    label.textContent = st.label;
+    label.style.color = st.fg;
+  }
+}
+
+function makeCustomerCard(eng, now) {
+  const card = el("div", { class: "cust-card", "data-customer": eng.id, "data-row": eng.id });
+  card.append(
+    el(
+      "div",
+      { class: "cust-top" },
+      el("span", { class: "dot" }),
+      el("span", { class: "eng-name" }, ""),
+      el("span", { class: "mono faint", "data-cust-id": "1" }, ""),
+      el("span", { class: "mono", "data-cust-status": "1", style: { marginLeft: "auto" } }, ""),
+    ),
+  );
+  const files = el("div", { class: "kb-list" });
+  for (const f of eng.kb_files || []) {
+    files.append(
       el(
         "div",
-        { class: "fail-top" },
-        badge("run", run.status),
-        el("span", { class: "eng-name" }, eng?.customer_name || ""),
-        el("span", { class: "mono faint" }, `${eng?.id} / ${run.id}`),
-        el("span", { class: "mono faint" }, rel(run.last_event_at, now)),
-      ),
-      el(
-        "div",
-        { class: "fail-grid" },
-        el("span", { class: "faint mono" }, "failed check"),
-        el("span", { class: "fail-chip" }, `✕ ${failed?.check_name || "—"}`),
-        el("span", { class: "faint mono" }, "reviewer objection"),
-        el("span", {}, `“${last?.reviewer_notes || ""}”`),
-        el("span", { class: "faint mono" }, "orchestrator adjustment"),
-        el("span", { class: "mono", style: { color: run.status === "needs_human" ? st.fg : tokens.color.text.secondary } }, run.adjusted_instructions || ""),
+        { class: "kb-row", "data-kb-file": f.path },
+        el("span", { class: "faint" }, "▤"),
+        el("span", {}, f.path),
+        el("span", { class: "faint mono" }, rel(f.updated, now)),
       ),
     );
-    list.append(card);
   }
-  return [list];
+  card.append(files);
+  const links = el("div", { class: "cust-links" });
+  if (eng.repo_url) links.append(el("a", { href: eng.repo_url }, "repo ↗"));
+  if (eng.live_url) links.append(el("a", { href: eng.live_url }, "live ↗"));
+  card.append(links);
+  fillCustomerCard(card, eng, now);
+  return card;
+}
+
+function syncCustomers(grid, store, now) {
+  const engs = orderedEngagements(store);
+  const existing = [...grid.querySelectorAll("[data-customer]")];
+  const byId = new Map(existing.map((n) => [n.getAttribute("data-customer"), n]));
+  const keep = new Set(engs.map((e) => e.id));
+  for (const eng of engs) {
+    const card = byId.get(eng.id);
+    if (card) fillCustomerCard(card, eng, now);
+    else grid.append(makeCustomerCard(eng, now));
+  }
+  for (const card of existing) {
+    if (!keep.has(card.getAttribute("data-customer"))) card.remove();
+  }
 }
 
 function renderCustomers(store, now) {
@@ -555,39 +742,32 @@ function renderCustomers(store, now) {
     return [emptyBlock("○", "no customers", "Engagements will appear here once the orchestrator creates them.")];
   }
   const grid = el("div", { class: "cust-grid" });
-  for (const eng of engs) {
-    const st = statusOf("engagement", eng.status);
-    const card = el("div", { class: "cust-card", "data-customer": eng.id });
-    card.append(
-      el(
-        "div",
-        { class: "cust-top" },
-        el("span", { class: "dot", style: { background: st.fg } }),
-        el("span", { class: "eng-name" }, eng.customer_name || ""),
-        el("span", { class: "mono faint" }, eng.id),
-        el("span", { class: "mono", style: { color: st.fg, marginLeft: "auto" } }, st.label),
-      ),
-    );
-    const files = el("div", { class: "kb-list" });
-    for (const f of eng.kb_files || []) {
-      files.append(
-        el(
-          "div",
-          { class: "kb-row", "data-kb-file": f.path },
-          el("span", { class: "faint" }, "▤"),
-          el("span", {}, f.path),
-          el("span", { class: "faint mono" }, rel(f.updated, now)),
-        ),
-      );
-    }
-    card.append(files);
-    const links = el("div", { class: "cust-links" });
-    if (eng.repo_url) links.append(el("a", { href: eng.repo_url }, "repo ↗"));
-    if (eng.live_url) links.append(el("a", { href: eng.live_url }, "live ↗"));
-    card.append(links);
-    grid.append(card);
-  }
+  for (const eng of engs) grid.append(makeCustomerCard(eng, now));
   return [grid];
+}
+
+function syncLoop(shell, route, store, now) {
+  const snap = store.snapshot;
+  const run = snap?.loop_runs?.find((r) => r.id === route.runId);
+  if (!run) return false;
+  const gates = (snap.gate_checks || []).filter((g) => g.loop_run_id === run.id);
+  const card = shell.querySelector("[data-gate-card]");
+  if (!card) return false;
+  const existing = [...card.querySelectorAll("[data-gate]")];
+  const byId = new Map(existing.map((n) => [n.getAttribute("data-gate"), n]));
+  const keep = new Set(gates.map((g) => g.id));
+  const sum = card.querySelector(".gate-sum");
+  for (const g of gates) {
+    const row = byId.get(g.id);
+    if (row) fillGateRow(row, g);
+    else card.insertBefore(makeGateRow(g), sum);
+  }
+  for (const row of existing) {
+    if (!keep.has(row.getAttribute("data-gate"))) row.remove();
+  }
+  const passed = gates.filter((g) => g.passed === 1 || g.passed === true).length;
+  if (sum) sum.textContent = `${passed}/${gates.length} passed · gate runs after reviewer approval`;
+  return true;
 }
 
 export function renderApp(root, { store, hash, now, go = (h) => { window.location.hash = h; } }) {
@@ -595,11 +775,32 @@ export function renderApp(root, { store, hash, now, go = (h) => { window.locatio
   if (now == null) now = serverNow(store.snapshot);
   const route = parseHash(hash);
   const existing = root.querySelector(":scope > .shell");
-  if (existing && existing.getAttribute("data-view") === route.view && route.view === "runs") {
-    const table = existing.querySelector(".runs-table");
-    if (table) {
-      patchRunsShell(existing, table, { store, hash, now, go }, route);
-      return root;
+  if (existing && existing.getAttribute("data-view") === route.view) {
+    if (route.view === "runs") {
+      const table = existing.querySelector(".runs-table");
+      if (table) {
+        patchRunsShell(existing, table, { store, hash, now, go }, route);
+        return root;
+      }
+    } else if (route.view === "failures") {
+      const list = existing.querySelector(".fail-list");
+      if (list) {
+        patchRunsShell(existing, null, { store, hash, now, go }, route);
+        syncFailures(list, store, now, go);
+        return root;
+      }
+    } else if (route.view === "customers") {
+      const grid = existing.querySelector(".cust-grid");
+      if (grid) {
+        patchRunsShell(existing, null, { store, hash, now, go }, route);
+        syncCustomers(grid, store, now);
+        return root;
+      }
+    } else if (route.view === "loop") {
+      if (existing.dataset.engId === route.engId && existing.dataset.runId === route.runId) {
+        patchRunsShell(existing, null, { store, hash, now, go }, route);
+        if (syncLoop(existing, route, store, now)) return root;
+      }
     }
   }
   root.replaceChildren();
@@ -610,6 +811,10 @@ export function renderApp(root, { store, hash, now, go = (h) => { window.locatio
   const active = (snap?.engagements || []).filter((e) => ["running", "needs_human", "new", "awaiting_approval"].includes(e.status)).length;
 
   const shell = el("div", { class: "shell", "data-view": route.view });
+  if (route.view === "loop") {
+    shell.dataset.engId = route.engId;
+    shell.dataset.runId = route.runId;
+  }
   const nav = [
     { href: "#/runs", glyph: "▤", label: "Runs", count: active, show: true },
     { href: "#/failures", glyph: "⚑", label: "Failures", count: nNeeds, show: nNeeds > 0, amber: true },

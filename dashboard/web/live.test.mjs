@@ -60,6 +60,64 @@ test("applyPatch changes a cell in place with the row order unchanged and the ro
   assert.ok(store.flashed.has("eng_a"));
 });
 
+test("in-place patching keeps Runs cell, Failures card, Customers card, and Loop gate row identity", () => {
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "needs_human", active_loop: "website", last_event_at: "2026-08-30T21:59:00Z", last_note: "old note", kb_files: [{ path: "BRIEF.md", updated: "2026-08-30T20:00:00Z" }], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      { id: "run_a", engagement_id: "eng_a", loop_name: "company-research", attempt: 0, status: "gate_passed", iteration_count: 1, last_note: "", last_event_at: "2026-08-30T21:50:00Z", adjusted_instructions: null, change_request_id: null },
+      { id: "run_web", engagement_id: "eng_a", loop_name: "website", attempt: 1, status: "needs_human", iteration_count: 1, last_note: "", last_event_at: "2026-08-30T21:59:00Z", adjusted_instructions: "old adj", change_request_id: null },
+    ],
+    iterations: [],
+    gate_checks: [
+      { id: "g1", loop_run_id: "run_a", check_name: "schema_valid", passed: 0, detail: "no", created_at: "2026-08-30T21:50:00Z" },
+    ],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+
+  const runs = mount({ hash: "#/runs", snap });
+  const note = runs.root.querySelector("[data-note]");
+  assert.ok(note);
+  runs.store.applyPatch({
+    entities: { engagements: [{ ...snap.engagements[0], last_note: "cell patched" }] },
+  });
+  assert.ok(note.isSameNode(runs.root.querySelector("[data-run-row='eng_a'] [data-note]")));
+  assert.equal(note.textContent, "cell patched");
+
+  const fail = mount({ hash: "#/failures", snap });
+  const failCard = fail.root.querySelector("[data-row='run_web']");
+  assert.ok(failCard);
+  fail.store.applyPatch({
+    entities: { loop_runs: [{ ...snap.loop_runs[1], adjusted_instructions: "drop video" }] },
+  });
+  assert.ok(failCard.isSameNode(fail.root.querySelector("[data-row='run_web']")));
+  assert.match(failCard.textContent, /drop video/);
+
+  const cust = mount({ hash: "#/customers", snap });
+  const custCard = cust.root.querySelector("[data-customer='eng_a']");
+  assert.ok(custCard);
+  cust.store.applyPatch({
+    entities: { engagements: [{ ...snap.engagements[0], customer_name: "Alpha Prime" }] },
+  });
+  assert.ok(custCard.isSameNode(cust.root.querySelector("[data-customer='eng_a']")));
+  assert.match(custCard.textContent, /Alpha Prime/);
+
+  const loop = mount({ hash: "#/runs/eng_a/run_a", snap });
+  const gateRow = loop.root.querySelector("[data-gate='g1']");
+  assert.ok(gateRow);
+  loop.store.applyPatch({
+    entities: { gate_checks: [{ ...snap.gate_checks[0], passed: 1 }] },
+  });
+  assert.ok(gateRow.isSameNode(loop.root.querySelector("[data-gate='g1']")));
+  assert.match(gateRow.textContent, /pass/);
+});
+
 test("flashed row ids clear after 800ms and CSS eases the background out", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
   const snap = {
