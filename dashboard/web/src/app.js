@@ -154,6 +154,149 @@ function emptyBlock(glyph, title, sentence) {
   );
 }
 
+function runRowBackground(eng, run, store) {
+  const flashed = store.flashed.has(eng.id) || (run && store.flashed.has(run.id));
+  const nh = eng.status === "needs_human";
+  return flashed ? FLASH : nh ? "rgba(217,119,6,0.04)" : "#ffffff";
+}
+
+function fillRunRow(row, eng, store, now) {
+  const run = activeRun(store.snapshot, eng);
+  row._run = run;
+  const st = statusOf("engagement", eng.status);
+  const n = run?.iteration_count ?? 0;
+  const attempt = run?.attempt ?? 0;
+  row.style.height = ROW_H;
+  row.style.background = runRowBackground(eng, run, store);
+  row.replaceChildren(
+    el(
+      "span",
+      { class: "eng-cell" },
+      el("span", { class: "eng-name" }, eng.customer_name || ""),
+      el("span", { class: "mono faint" }, eng.id),
+    ),
+    badge("engagement", eng.status),
+    el("span", { class: "mono loop" }, eng.active_loop || "—"),
+    iterSegs(n, st.fg),
+    attDots(attempt),
+    el(
+      "span",
+      {
+        class: "mono",
+        "data-last-event": "1",
+        style: { color: isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted },
+      },
+      rel(eng.last_event_at, now),
+    ),
+    el("span", { class: "note", "data-note": "1" }, eng.last_note || ""),
+  );
+}
+
+function makeRunRow(eng, store, now, go) {
+  const row = el("div", {
+    class: "runs-row",
+    "data-row": eng.id,
+    "data-run-row": eng.id,
+    onClick: () => {
+      const run = row._run;
+      if (run) go(`#/runs/${eng.id}/${run.id}`);
+    },
+  });
+  fillRunRow(row, eng, store, now);
+  return row;
+}
+
+function syncRunsTable(table, store, now, go) {
+  const engs = orderedEngagements(store);
+  const existing = [...table.querySelectorAll("[data-row]")];
+  const byId = new Map(existing.map((n) => [n.getAttribute("data-row"), n]));
+  const keep = new Set(engs.map((e) => e.id));
+  for (const eng of engs) {
+    const row = byId.get(eng.id);
+    if (row) {
+      const run = activeRun(store.snapshot, eng);
+      const affected = store.flashed.has(eng.id) || (run && store.flashed.has(run.id));
+      if (affected) fillRunRow(row, eng, store, now);
+      else {
+        const time = row.querySelector("[data-last-event]");
+        if (time) {
+          time.textContent = rel(eng.last_event_at, now);
+          time.style.color = isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted;
+        }
+      }
+    } else table.append(makeRunRow(eng, store, now, go));
+  }
+  for (const row of existing) {
+    if (!keep.has(row.getAttribute("data-row"))) row.remove();
+  }
+}
+
+function patchRunsShell(shell, table, { store, hash, now, go }, route) {
+  const snap = store.snapshot;
+  const sse = store.sse;
+  const conn = connLabel(sse);
+  const nNeeds = needsCount(snap);
+  const nEng = snap?.engagements?.length ?? 0;
+  const nActive = activeEngagements(snap);
+  const box = shell.querySelector(".conn");
+  if (box) {
+    box.dataset.conn = sse.state;
+    const dot = box.querySelector(".conn-dot");
+    if (dot) {
+      dot.style.background = conn.dot;
+      dot.style.animation = conn.anim;
+    }
+    const label = box.querySelector("[data-conn-label]");
+    if (label) {
+      label.textContent = conn.label;
+      label.style.color = conn.fg;
+    }
+    const sub = box.querySelector("[data-conn-sub]");
+    if (sub) sub.textContent = conn.sub;
+  }
+  const clock = shell.querySelector("[data-snapshot-clock]");
+  if (clock) clock.textContent = `snapshot ${clockTime(snap?.serverTime)} · v0.1.0`;
+  const runsCount = shell.querySelector('.nav-item[href="#/runs"] .nav-count');
+  if (runsCount) {
+    const activeNav = (snap?.engagements || []).filter((e) =>
+      ["running", "needs_human", "new", "awaiting_approval"].includes(e.status),
+    ).length;
+    runsCount.textContent = String(activeNav);
+  }
+  const failNav = shell.querySelector('.nav-item[href="#/failures"] .nav-count');
+  if (failNav) failNav.textContent = String(nNeeds);
+  const sum = shell.querySelector("[data-runs-summary]");
+  if (sum) sum.textContent = `${nEng} engagements · ${nActive} active · sorted by last event`;
+  const main = shell.querySelector(".main");
+  const content = shell.querySelector(".content");
+  const banner = main?.querySelector(":scope > .banner");
+  if (sse.state === "disconnected") {
+    const html = el(
+      "div",
+      { class: "banner disc", "data-banner": "disconnected" },
+      el("span", { class: "mono" }, "✕ stream disconnected"),
+      el("span", {}, `showing snapshot from ${snap?.snapshotAt ? rel(snap.snapshotAt, now) : "—"} — snapshot`),
+    );
+    if (banner) banner.replaceWith(html);
+    else if (content) main.insertBefore(html, content);
+  } else if (nNeeds > 0 && route.view !== "failures") {
+    const html = el(
+      "a",
+      { class: "banner needs", href: "#/failures", "data-banner": "needs_human" },
+      el(
+        "span",
+        { class: "banner-left" },
+        el("span", { class: "mono" }, `⚑ ${nNeeds} runs need human input`),
+        el("span", {}, "every other loop is proceeding without you"),
+      ),
+      el("span", { class: "mono banner-right" }, "open failures →"),
+    );
+    if (banner) banner.replaceWith(html);
+    else if (content) main.insertBefore(html, content);
+  } else if (banner) banner.remove();
+  syncRunsTable(table, store, now, go);
+}
+
 function renderRuns(store, now, go) {
   const snap = store.snapshot;
   if (!snap) return loadingBlock();
@@ -171,42 +314,7 @@ function renderRuns(store, now, go) {
       ...["engagement", "status", "active loop", "iteration", "attempt", "last event", "last note"].map((t) => el("span", {}, t)),
     ),
   );
-  for (const eng of engs) {
-    const run = activeRun(snap, eng);
-    const st = statusOf("engagement", eng.status);
-    const n = run?.iteration_count ?? 0;
-    const attempt = run?.attempt ?? 0;
-    const flashed = store.flashed.has(eng.id) || (run && store.flashed.has(run.id));
-    const nh = eng.status === "needs_human";
-    const row = el("div", {
-      class: "runs-row",
-      "data-run-row": eng.id,
-      style: {
-        height: ROW_H,
-        background: flashed ? FLASH : nh ? "rgba(217,119,6,0.04)" : "#ffffff",
-      },
-      onClick: () => run && go(`#/runs/${eng.id}/${run.id}`),
-    });
-    row.append(
-      el(
-        "span",
-        { class: "eng-cell" },
-        el("span", { class: "eng-name" }, eng.customer_name || ""),
-        el("span", { class: "mono faint" }, eng.id),
-      ),
-      badge("engagement", eng.status),
-      el("span", { class: "mono loop" }, eng.active_loop || "—"),
-      iterSegs(n, st.fg),
-      attDots(attempt),
-      el(
-        "span",
-        { class: "mono", style: { color: isRecent(eng.last_event_at, now) ? LINK : tokens.color.text.muted } },
-        rel(eng.last_event_at, now),
-      ),
-      el("span", { class: "note" }, eng.last_note || ""),
-    );
-    table.append(row);
-  }
+  for (const eng of engs) table.append(makeRunRow(eng, store, now, go));
   const legend = el(
     "div",
     { class: "legend" },
@@ -472,8 +580,16 @@ function renderCustomers(store) {
 }
 
 export function renderApp(root, { store, hash, now = Date.now(), go = (h) => { window.location.hash = h; } }) {
-  root.replaceChildren();
   const route = parseHash(hash);
+  const existing = root.querySelector(":scope > .shell");
+  if (existing && existing.getAttribute("data-view") === route.view && route.view === "runs") {
+    const table = existing.querySelector(".runs-table");
+    if (table) {
+      patchRunsShell(existing, table, { store, hash, now, go }, route);
+      return root;
+    }
+  }
+  root.replaceChildren();
   const snap = store.snapshot;
   const sse = store.sse;
   const conn = connLabel(sse);

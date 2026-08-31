@@ -37,8 +37,10 @@ test("applyPatch changes a cell in place with the row order unchanged and the ro
     comparisons: {},
   };
   const { root, store } = mount({ snap });
-  const before = [...root.querySelectorAll("[data-run-row]")].map((n) => n.getAttribute("data-run-row"));
+  const beforeNodes = [...root.querySelectorAll("[data-row]")];
+  const before = beforeNodes.map((n) => n.getAttribute("data-row"));
   assert.deepEqual(before, ["eng_a", "eng_b"]);
+  assert.equal(root.querySelectorAll("[data-row]").length, 2);
   store.applyPatch({
     entities: {
       engagements: [
@@ -46,8 +48,13 @@ test("applyPatch changes a cell in place with the row order unchanged and the ro
       ],
     },
   });
-  const after = [...root.querySelectorAll("[data-run-row]")].map((n) => n.getAttribute("data-run-row"));
+  const afterNodes = [...root.querySelectorAll("[data-row]")];
+  const after = afterNodes.map((n) => n.getAttribute("data-row"));
   assert.deepEqual(after, ["eng_a", "eng_b"]);
+  assert.equal(afterNodes.length, beforeNodes.length);
+  assert.equal(afterNodes.length, 2);
+  assert.ok(beforeNodes[0].isSameNode(afterNodes[0]));
+  assert.ok(beforeNodes[1].isSameNode(afterNodes[1]));
   assert.match(root.querySelector("[data-run-row='eng_a']").textContent, /patched note/);
   assert.ok(store.flashed.has("eng_a"));
 });
