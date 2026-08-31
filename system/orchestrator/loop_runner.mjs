@@ -179,7 +179,7 @@ export function readExecutorOutput(outputPath, max = REVIEWER_CONTENT_MAX) {
 
 export function scrapesTable(db, loopRunId) {
   const rows = db
-    .prepare("SELECT url, http_status FROM scrapes WHERE loop_run_id = ? ORDER BY created_at, rowid")
+    .prepare("SELECT url, http_status FROM scrapes WHERE loop_run_id = ? ORDER BY rowid")
     .all(loopRunId);
   const lines = ["| url | http_status | note |", "| --- | --- | --- |"];
   for (const r of rows) {

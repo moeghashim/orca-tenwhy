@@ -120,6 +120,19 @@ test("validateVerdict coerces numbered lines that lack a pass/fail token", () =>
   assert.equal(checked.notes, "FORMAT: reviewer notes must enumerate checks 1–5");
 });
 
+test("validateVerdict accepts uppercase PASS/FAIL tokens", () => {
+  const notes = [
+    "1. PASS — RESEARCH.json matches the schema.",
+    "2. Fail — five competitors each have a 200 scrape URL.",
+    "3. FAILS — product coverage is 50% with priced 200 sources.",
+    "4. PASSED — three enhancement_ideas have rationale.",
+    "5. FAILED — SOURCES.md lists every scrapes row.",
+  ].join("\n");
+  const checked = validateVerdict({ verdict: "approve", notes });
+  assert.equal(checked.verdict, "approve");
+  assert.equal(checked.notes, notes);
+});
+
 test("validateVerdict coerces numbered lines with fewer than three non-URL words", () => {
   const notes = [1, 2, 3, 4, 5].map((n) => `${n}. pass ok`).join("\n");
   const checked = validateVerdict({ verdict: "approve", notes });

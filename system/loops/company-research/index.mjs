@@ -27,7 +27,7 @@ export function reviewerPrompt(vars = {}) {
 
 const CHECK_LINE = (n) => new RegExp(`^${n}\\.(?!\\d)`);
 const ENUMERATE_FORMAT = "FORMAT: reviewer notes must enumerate checks 1–5";
-const PASS_FAIL = /(?:^|[^A-Za-z])(?:pass|fail|passes|fails)(?:[^A-Za-z]|$)|[✓✕]/i;
+const PASS_FAIL = /(?:^|[^A-Za-z])(?:pass|fail|passes|fails|passed|failed)(?:[^A-Za-z]|$)|[✓✕]/i;
 
 function isUrlToken(tok) {
   const t = String(tok).replace(/^[("'<[.]+|[)"'>],.]+$/g, "");

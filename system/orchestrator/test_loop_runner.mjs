@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createFixtureAdapter } from "./adapters/fixture.mjs";
-import { runLoop } from "./loop_runner.mjs";
+import { runLoop, scrapesTable } from "./loop_runner.mjs";
 import { utcNow } from "./util.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -419,6 +419,29 @@ test("executor prompt on iteration 2 contains URLs scraped in iteration 1", asyn
   assert.match(prompts[1], /https:\/\/blocked\.example\/robots/);
   assert.match(prompts[1], /\| 200 \|/);
   assert.match(prompts[1], /\| refused \|/);
+});
+
+test("scrapes ledger keeps insertion order when created_at ties", (t) => {
+  const ctx = setup();
+  t.after(() => {
+    ctx.db.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  });
+  const runId = "run_ledger";
+  ctx.db.prepare(
+    `INSERT INTO loop_runs (id, engagement_id, loop_name, attempt, status, started_at)
+     VALUES (?, ?, 'company-research', 0, 'running', datetime('now'))`,
+  ).run(runId, ctx.engagementId);
+  const tied = "2026-08-31T12:00:00Z";
+  ctx.db.prepare(
+    "INSERT INTO scrapes (id, loop_run_id, url, http_status, content_path, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+  ).run("sc_z", runId, "https://zeta.example", 200, tied);
+  ctx.db.prepare(
+    "INSERT INTO scrapes (id, loop_run_id, url, http_status, content_path, created_at) VALUES (?, ?, ?, ?, NULL, ?)",
+  ).run("sc_a", runId, "https://alpha.example", 404, tied);
+  const table = scrapesTable(ctx.db, runId);
+  const urls = [...table.matchAll(/\| (https:\/\/\S+) \|/g)].map((m) => m[1]);
+  assert.deepEqual(urls, ["https://zeta.example", "https://alpha.example"]);
 });
 
 function designerFence() {

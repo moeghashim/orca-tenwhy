@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createOrchestratorModelFixture } from "./adapters/fixture.mjs";
+import { failedChecksFromReviewerNotes } from "./failure.mjs";
 import { generateCustomerRepo } from "./customer_repo.mjs";
 import { tick } from "./orchestrator.mjs";
 import { prefixedId, utcNow } from "./util.mjs";
@@ -196,4 +197,19 @@ test("iteration-cap retry cites check 5 from reviewer notes when gate_checks is 
   assert.match(runs[1].adjusted_instructions, /5\. fail/);
   db.close();
   fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test("failedChecksFromReviewerNotes treats FAIL/Fail as fail", () => {
+  const notes = [
+    "1. PASS — RESEARCH.json matches the schema extra words.",
+    "2. pass — five competitors each have a 200 scrape URL.",
+    "3. pass — product coverage is 50 percent with priced sources.",
+    "4. pass — three enhancement_ideas have rationale.",
+    "5. FAIL — SOURCES.md omits scrape rows from the ledger.",
+  ].join("\n");
+  const failed = failedChecksFromReviewerNotes(notes);
+  assert.deepEqual(
+    failed.map((c) => c.check_name),
+    ["sources_complete"],
+  );
 });

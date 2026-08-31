@@ -26,7 +26,7 @@ export function failedChecksFromReviewerNotes(notes) {
     const m = t.match(/^(\d+)\.(?!\d)\s*(.*)$/);
     if (!m) continue;
     const rest = m[2] || "";
-    if (!/(?:^|[^A-Za-z])(?:fail|fails|failed)(?:[^A-Za-z]|$)|[✕]/.test(rest)) continue;
+    if (!/(?:^|[^A-Za-z])(?:fail|fails|failed)(?:[^A-Za-z]|$)|[✕]/i.test(rest)) continue;
     const n = Number(m[1]);
     failed.push({
       check_name: RESEARCH_CHECK_NAMES[n - 1] || `check ${n}`,
