@@ -27,8 +27,8 @@ export function verifyGithubUrl(slug, spawn = spawnSync) {
     throw new Error(`gh repo view ${name} failed: ${(view.stderr || view.stdout || "").trim()}`);
   }
   const seen = (view.stdout || "").trim();
-  if (seen && seen !== expected) {
-    throw new Error(`github url mismatch for ${name}: expected ${expected}, gh says ${seen}`);
+  if (!seen || seen !== expected) {
+    throw new Error(`github url mismatch for ${name}: expected ${expected}, gh says ${seen || "(empty)"}`);
   }
   return expected;
 }

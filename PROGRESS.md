@@ -66,6 +66,8 @@ Executed directly by the build orchestrator (Claude Code) because the executor/r
 
 P3-fix5 (round 5 item 1): `node --test system/orchestrator/test_customer_repo.mjs` → `✔ github backend records the https URL, not a fragment of gh output` · `✔ github backend fails loudly when gh repo view disagrees` · `✔ repair-repo-url updates the row and emits engagement.repo_url_repaired` `tests 4` `pass 4` `fail 0` `exit=0`. `node --test system/orchestrator/test_*.mjs` → `tests 40` `pass 40` `fail 0` `exit=0`. `_pending_`
 
+P3-fix5 item 5 (Codex `P3 issues #r5`): `node --test system/orchestrator/test_customer_repo.mjs` → `✔ github backend fails loudly when gh repo view prints nothing` `tests 5` `pass 5` `fail 0` `exit=0`. Successful `gh repo view` must return a non-empty URL equal to the constructed one. `_pending_`
+
 P4-fix5 (round 5 item 4): `node --test system/orchestrator/test_loop_runner.mjs system/orchestrator/test_failure_policy.mjs system/loops/company-research/test_prompts.mjs` → `✔ executor prompt on iteration 2 contains URLs scraped in iteration 1` · `✔ iteration-cap retry cites check 5 from reviewer notes when gate_checks is empty` `tests 25` `pass 25` `fail 0` `exit=0`. Executor prompt gets the run's scrape ledger every iteration; retry prefix cites `sources_complete` from reviewer notes when the run ends by iteration cap with no gate_checks. `_pending_`
 
 ## Phase 4 — Loop 1: Company Research

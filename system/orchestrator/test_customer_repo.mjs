@@ -75,7 +75,8 @@ function stubGh({ createOut, viewUrl }) {
       return { status: 0, stdout: createOut, stderr: "", error: undefined };
     }
     if (args[0] === "repo" && args[1] === "view") {
-      return { status: 0, stdout: `${viewUrl}\n`, stderr: "", error: undefined };
+      const out = viewUrl == null || viewUrl === "" ? "" : `${viewUrl}\n`;
+      return { status: 0, stdout: out, stderr: "", error: undefined };
     }
     return { status: 1, stdout: "", stderr: `unexpected gh ${args.join(" ")}` };
   };
@@ -134,6 +135,32 @@ test("github backend fails loudly when gh repo view disagrees", () => {
         }),
       }),
     /github url mismatch/,
+  );
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test("github backend fails loudly when gh repo view prints nothing", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tenwhy-gh-"));
+  const targetDir = path.join(tmp, "acme");
+  generateCustomerRepo({
+    slug: "acme",
+    customerName: "Acme",
+    idea: "clinic",
+    siteUrl: "",
+    targetDir,
+  });
+  assert.throws(
+    () =>
+      publishCustomerRepo({
+        dir: targetDir,
+        slug: "acme",
+        backend: "github",
+        spawn: stubGh({
+          createOut: GH_CREATE_OUT,
+          viewUrl: "",
+        }),
+      }),
+    /github url mismatch.*\(empty\)/,
   );
   fs.rmSync(tmp, { recursive: true, force: true });
 });
