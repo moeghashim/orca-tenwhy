@@ -152,7 +152,8 @@ class FakeEventSource {
   }
   close() {}
   emit(data) {
-    for (const fn of this.listeners.patch || []) fn({ data: JSON.stringify(data) });
+    const ev = { data: JSON.stringify(data) };
+    return Promise.all((this.listeners.patch || []).map((fn) => Promise.resolve(fn(ev))));
   }
 }
 
@@ -210,10 +211,10 @@ test("loading EventSource patches advance steps and navigate on awaiting_approva
     { id: 4, kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1 } },
     { id: 5, kind: "gate.checked", loop_run_id: "run_web", payload: { passed: true } },
   ];
-  for (const ev of events) FakeEventSource.last.emit(ev);
+  for (const ev of events) await FakeEventSource.last.emit(ev);
   assert.equal(loadingProgress({ events: session.state.events, loop_runs }).completed, 5);
   assert.equal(root.querySelectorAll("[data-step].done").length, 5);
-  FakeEventSource.last.emit({
+  await FakeEventSource.last.emit({
     id: 6,
     kind: "engagement.awaiting_approval",
     entities: { engagements: [{ id: "eng_x", status: "awaiting_approval" }] },
@@ -285,4 +286,215 @@ test("direct results route fetches research and preview-manifest before render",
     tab: "design",
   });
   assert.match(root.textContent, /Harbor & Finch/);
+});
+
+test("awaiting_approval SSE patch loads research before rendering results", async () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  let hash = "#/e/eng_x";
+  const session = createCustomerSession({
+    EventSource: FakeEventSource,
+    getHash: () => hash,
+    setHash: (h) => {
+      hash = h;
+    },
+    fetch: async (url) => {
+      if (String(url).includes("/research")) {
+        return jsonRes({
+          research: { company: { summary: "Neighborhood cafe" }, competitors: [], enhancement_ideas: [] },
+          comparison: { columns: [{ label: "customer product" }], rows: [{ cells: [{ value: "Drip", state: "valid" }] }] },
+        });
+      }
+      if (String(url).includes("preview-manifest")) {
+        return jsonRes({ pages: [{ path: "/index.html", title: "Harbor & Finch" }] });
+      }
+      return jsonRes({
+        engagement: { id: "eng_x", status: "awaiting_approval" },
+        events: [],
+        loop_runs: [],
+        lastEventId: 0,
+      });
+    },
+    render: (state) => {
+      renderCustomerApp(root, {
+        hash,
+        engagement: state.engagement,
+        research: state.research,
+        comparison: state.comparison,
+        pages: state.pages,
+        events: state.events,
+        loop_runs: state.loop_runs,
+      });
+    },
+  });
+  await session.paint();
+  await FakeEventSource.last.emit({
+    id: 1,
+    kind: "engagement.awaiting_approval",
+    entities: { engagements: [{ id: "eng_x", status: "awaiting_approval" }] },
+  });
+  await session.paint();
+  assert.equal(hash, "#/e/eng_x/results");
+  assert.match(root.textContent, /Neighborhood cafe/);
+  assert.ok(root.querySelector("[data-approve]"));
+  assert.equal(session.state.research?.company?.summary, "Neighborhood cafe");
+});
+
+test("request-changes clears website step events until the new run's gate passes", async () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  let hash = "#/e/eng_x/results";
+  const loop_runs = [
+    { id: "run_res", loop_name: "company-research" },
+    { id: "run_web", loop_name: "website" },
+  ];
+  const events = [
+    { id: 1, kind: "loop_run.started", loop_run_id: "run_res", payload: { loopName: "company-research" } },
+    { id: 2, kind: "iteration.recorded", loop_run_id: "run_res", payload: { n: 1 } },
+    { id: 3, kind: "gate.checked", loop_run_id: "run_res", payload: { passed: true } },
+    { id: 4, kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1 } },
+    { id: 5, kind: "gate.checked", loop_run_id: "run_web", payload: { passed: true } },
+  ];
+  const session = createCustomerSession({
+    EventSource: FakeEventSource,
+    getHash: () => hash,
+    setHash: (h) => {
+      hash = h;
+    },
+    fetch: async (url, opts) => {
+      if (opts?.method === "POST") return jsonRes({ ok: true, id: "apr_1" }, true, 200);
+      if (String(url).includes("/research")) {
+        return jsonRes({ research: { company: { summary: "x" } }, comparison: null });
+      }
+      if (String(url).includes("preview-manifest")) return jsonRes({ pages: [] });
+      return jsonRes({
+        engagement: { id: "eng_x", status: "awaiting_approval" },
+        events,
+        loop_runs,
+        lastEventId: 5,
+      });
+    },
+    render: (state) => {
+      renderCustomerApp(root, {
+        hash,
+        engagement: state.engagement,
+        events: state.events,
+        loop_runs: state.loop_runs,
+        rebuilding: state.rebuilding,
+        research: state.research,
+        pages: state.pages,
+      });
+    },
+  });
+  await session.paint();
+  session.state.showNotes = true;
+  await session.onRequest("darker green");
+  assert.equal(hash, "#/e/eng_x");
+  assert.equal(session.state.rebuilding, true);
+  const after = loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs });
+  assert.ok(after.completed < 5, after);
+  assert.equal(after.completed, 3);
+  await session.paint();
+  assert.equal(root.querySelector("[data-step='5']").classList.contains("done"), false);
+  assert.match(root.textContent, /[Rr]ebuilding with your notes/);
+  session.state.loop_runs = [...session.state.loop_runs, { id: "run_web2", loop_name: "website" }];
+  await FakeEventSource.last.emit({
+    id: 10,
+    kind: "iteration.recorded",
+    loop_run_id: "run_web2",
+    payload: { n: 1 },
+    entities: { loop_runs: [{ id: "run_web2", loop_name: "website" }] },
+  });
+  assert.equal(loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs }).completed, 4);
+  await FakeEventSource.last.emit({
+    id: 11,
+    kind: "gate.checked",
+    loop_run_id: "run_web2",
+    payload: { passed: true },
+  });
+  assert.equal(loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs }).completed, 5);
+});
+
+test("approve and request-changes treat only 2xx as success", async () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const root = document.getElementById("app");
+  let hash = "#/e/eng_x/results";
+  let next = { status: 200, ok: true, body: { ok: true, id: "apr_x" } };
+  const session = createCustomerSession({
+    EventSource: FakeEventSource,
+    getHash: () => hash,
+    setHash: (h) => {
+      hash = h;
+    },
+    fetch: async (url, opts) => {
+      if (opts?.method === "POST") {
+        if (next.throw) throw new Error("network");
+        return jsonRes(next.body || {}, next.ok, next.status);
+      }
+      return jsonRes({
+        engagement: { id: "eng_x", status: "awaiting_approval" },
+        events: [],
+        loop_runs: [],
+        lastEventId: 0,
+      });
+    },
+    render: (state) => {
+      renderCustomerApp(root, {
+        hash,
+        engagement: state.engagement,
+        busy: state.busy,
+        error: state.error,
+        launching: state.launching,
+        showNotes: state.showNotes,
+      });
+    },
+  });
+  await session.paint();
+
+  next = { status: 409, ok: false, body: { error: "nope" } };
+  await session.onApprove();
+  assert.equal(session.state.error, "this project isn't waiting for approval right now");
+  assert.equal(session.state.launching, false);
+  assert.equal(session.state.busy, false);
+  assert.equal(hash, "#/e/eng_x/results");
+
+  next = { status: 403, ok: false, body: { error: "forbidden" } };
+  await session.onApprove();
+  assert.equal(session.state.error, "couldn't submit — try again");
+  assert.equal(session.state.launching, false);
+  assert.equal(root.querySelector("[data-approve]").disabled, false);
+
+  next = { status: 500, ok: false, body: { error: "boom" } };
+  await session.onApprove();
+  assert.equal(session.state.error, "couldn't submit — try again");
+
+  next = { throw: true };
+  await session.onApprove();
+  assert.equal(session.state.error, "couldn't submit — try again");
+  assert.equal(hash, "#/e/eng_x/results");
+
+  session.state.showNotes = true;
+  next = { status: 400, ok: false, body: { error: "notes required" } };
+  await session.onRequest("x");
+  assert.equal(session.state.error, "notes required");
+  assert.equal(hash, "#/e/eng_x/results");
+
+  session.state.showNotes = true;
+  next = { status: 403, ok: false, body: {} };
+  await session.onRequest("please change the hero");
+  assert.equal(session.state.error, "couldn't submit — try again");
+  assert.equal(hash, "#/e/eng_x/results");
+  assert.equal(session.state.rebuilding, false);
+
+  session.state.showNotes = true;
+  next = { status: 200, ok: true, body: { ok: true, id: "apr_ok" } };
+  await session.onRequest("please change the hero");
+  assert.equal(hash, "#/e/eng_x");
+  assert.equal(session.state.rebuilding, true);
 });

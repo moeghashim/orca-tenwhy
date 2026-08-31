@@ -18,7 +18,22 @@ export function createCustomerState() {
     lastEventId: 0,
     resultsLoaded: false,
     navigateTo: null,
+    staleWebsiteRunIds: new Set(),
   };
+}
+
+export function is2xx(status) {
+  return status >= 200 && status < 300;
+}
+
+export function resetWebsiteProgress(state) {
+  const stale = new Set(
+    (state.loop_runs || []).filter((r) => r.loop_name === "website").map((r) => r.id),
+  );
+  state.staleWebsiteRunIds = new Set([...(state.staleWebsiteRunIds || []), ...stale]);
+  state.events = (state.events || []).filter((e) => !stale.has(e.loop_run_id));
+  state.rebuilding = true;
+  state.resultsLoaded = false;
 }
 
 export function clientHeaders() {
@@ -34,8 +49,11 @@ function mergeRuns(state, rows) {
 
 export function applyPatch(state, p) {
   if (!p) return state;
+  const stale = state.staleWebsiteRunIds || new Set();
   if (p.kind) {
-    state.events = [...state.events, { id: p.id, kind: p.kind, loop_run_id: p.loop_run_id, payload: p.payload || {} }];
+    if (!(p.loop_run_id && stale.has(p.loop_run_id))) {
+      state.events = [...state.events, { id: p.id, kind: p.kind, loop_run_id: p.loop_run_id, payload: p.payload || {} }];
+    }
   }
   if (p.id) state.lastEventId = Math.max(state.lastEventId, Number(p.id) || 0);
   if (p.entities?.loop_runs) mergeRuns(state, p.entities.loop_runs);
@@ -83,27 +101,40 @@ export function createCustomerSession(deps) {
     const url = `/api/events?engagement=${encodeURIComponent(id)}&since=${state.lastEventId || 0}`;
     es = new ES(url);
     es.addEventListener("patch", (ev) => {
-      try {
-        applyPatch(state, JSON.parse(ev.data));
-        if (state.navigateTo) {
+      const done = Promise.resolve()
+        .then(async () => {
+          applyPatch(state, JSON.parse(ev.data));
           const dest = state.navigateTo;
-          state.navigateTo = null;
-          go(dest);
-          return;
-        }
-        paint();
-      } catch {
-        /* */
-      }
+          if (dest && dest.includes("/results") && state.engagement?.id) {
+            state.navigateTo = null;
+            state.resultsLoaded = false;
+            await loadResults(state.engagement.id);
+            go(dest);
+            return;
+          }
+          if (dest) {
+            state.navigateTo = null;
+            go(dest);
+            return;
+          }
+          await paint();
+        })
+        .catch(() => {});
+      return done;
     });
   }
 
   async function loadResults(id) {
     const fetchFn = deps.fetch;
-    const [research, manifest] = await Promise.all([
+    const [bundle, research, manifest] = await Promise.all([
+      fetchFn(`/api/engagements/${id}`).then((r) => (r.ok ? r.json() : null)),
       fetchFn(`/api/engagements/${id}/research`).then((r) => (r.ok ? r.json() : null)),
       fetchFn(`/api/engagements/${id}/preview-manifest`).then((r) => (r.ok ? r.json() : { pages: [] })),
     ]);
+    if (bundle?.engagement) {
+      state.engagement = { ...state.engagement, ...bundle.engagement };
+      if (bundle.loop_runs) mergeRuns(state, bundle.loop_runs);
+    }
     if (research) {
       state.research = research.research;
       state.comparison = research.comparison;
@@ -160,18 +191,30 @@ export function createCustomerSession(deps) {
       state.error = "";
       state.launching = true;
       deps.render?.(state, parseCustomerHash(getHash()));
-      const res = await deps.fetch(`/api/engagements/${state.engagement.id}/approve`, {
-        method: "POST",
-        headers: clientHeaders(),
-        body: "{}",
-      });
+      let res;
+      try {
+        res = await deps.fetch(`/api/engagements/${state.engagement.id}/approve`, {
+          method: "POST",
+          headers: clientHeaders(),
+          body: "{}",
+        });
+      } catch {
+        state.busy = false;
+        state.launching = false;
+        state.error = "couldn't submit — try again";
+        deps.render?.(state, parseCustomerHash(getHash()));
+        return;
+      }
       state.busy = false;
       if (res.status === 409) {
         state.launching = false;
         state.error = "this project isn't waiting for approval right now";
-      } else if (!res.ok) {
+      } else if (res.status === 400) {
         state.launching = false;
-        state.error = "approve failed";
+        state.error = "notes required";
+      } else if (!is2xx(res.status)) {
+        state.launching = false;
+        state.error = "couldn't submit — try again";
       }
       deps.render?.(state, parseCustomerHash(getHash()));
     },
@@ -187,14 +230,23 @@ export function createCustomerSession(deps) {
         deps.render?.(state, parseCustomerHash(getHash()));
         return;
       }
+      const hashBefore = getHash();
       state.busy = true;
       state.error = "";
-      deps.render?.(state, parseCustomerHash(getHash()));
-      const res = await deps.fetch(`/api/engagements/${state.engagement.id}/request-changes`, {
-        method: "POST",
-        headers: clientHeaders(),
-        body: JSON.stringify({ notes: text }),
-      });
+      deps.render?.(state, parseCustomerHash(hashBefore));
+      let res;
+      try {
+        res = await deps.fetch(`/api/engagements/${state.engagement.id}/request-changes`, {
+          method: "POST",
+          headers: clientHeaders(),
+          body: JSON.stringify({ notes: text }),
+        });
+      } catch {
+        state.busy = false;
+        state.error = "couldn't submit — try again";
+        deps.render?.(state, parseCustomerHash(getHash()));
+        return;
+      }
       state.busy = false;
       if (res.status === 409) {
         state.error = "this project isn't waiting for approval right now";
@@ -206,8 +258,13 @@ export function createCustomerSession(deps) {
         deps.render?.(state, parseCustomerHash(getHash()));
         return;
       }
+      if (!is2xx(res.status)) {
+        state.error = "couldn't submit — try again";
+        deps.render?.(state, parseCustomerHash(getHash()));
+        return;
+      }
       state.showNotes = false;
-      state.rebuilding = true;
+      resetWebsiteProgress(state);
       go(`#/e/${state.engagement.id}`);
     },
   };
