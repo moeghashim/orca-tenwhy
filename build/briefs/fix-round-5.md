@@ -1,0 +1,6 @@
+# Follow-up brief — round 5 (orchestrator findings from the first real engagement, 2026-08-31) — commits `P3-fix5: …`
+
+1. **`engagements.repo_url` must be the repository URL** (`system/orchestrator/customer_repo.mjs` `publishCustomerRepo`, github backend): the live run stored `'origin/main'.` — a fragment of `gh repo create --push` output — because the URL was taken from the last output line. Construct the URL deterministically as `https://github.com/moeghashim/<name>` (and cross-check it against `gh repo view moeghashim/<name> --json url -q .url` when `gh` is available; on mismatch fail loudly). For the local backend keep the `file://…/state/remotes/<slug>.git` form. Also add a one-off repair path: `loopctl repair-repo-url <engagement-id>` that recomputes the URL for an existing engagement (needed for `eng_e15d4850`). Tests: github-backend test with a stub `gh` that prints realistic multi-line output → URL is the https form; repair command updates the row and emits an `engagement.repo_url_repaired` event.
+2. **Adapter stdin regression guard already landed** (`164685a`, orchestrator hotfix) — nothing to do, listed for completeness; do not revert `stdio: ["ignore","pipe","pipe"]` in `adapters/pi.mjs`.
+
+Finish with `DONE fix5 <hash…>` — only hashes in `git log`.
