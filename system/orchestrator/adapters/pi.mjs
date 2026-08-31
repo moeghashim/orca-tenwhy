@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +66,68 @@ function extractStreamError(stdout) {
     }
   }
   return error;
+}
+
+function walkFiles(dir, out = []) {
+  let entries = [];
+  try {
+    entries = fsSync.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walkFiles(p, out);
+    else out.push(p);
+  }
+  return out;
+}
+
+/** Pi stores sessions as <sessionDir>/<cwd-slug>/<ISO-ts>_<sessionId>.jsonl */
+export function findSessionFile(sessionDir, sessionId) {
+  const hit = walkFiles(sessionDir).find((p) => p.endsWith(`_${sessionId}.jsonl`));
+  return hit ?? null;
+}
+
+/** Count tool calls in a Pi session JSONL (assistant `toolCall` blocks + `toolResult` messages). */
+export function countToolCalls(jsonlText) {
+  let count = 0;
+  for (const line of String(jsonlText).split(/\n+/)) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const msg = entry?.message ?? (entry?.role ? entry : null);
+    if (!msg) continue;
+    if (msg.role === "toolResult") count++;
+    if (Array.isArray(msg.content)) {
+      for (const block of msg.content) if (block?.type === "toolCall") count++;
+    }
+  }
+  return count;
+}
+
+/** SOP §0.3 / §7: the reviewer runs with no tools. Verify it mechanically from the trace. */
+export function assertReviewerUsedNoTools({ sessionDir, sessionId, traceRef }) {
+  const file = findSessionFile(sessionDir, sessionId);
+  if (!file) {
+    const err = new Error(`reviewer session file not found for ${sessionId} under ${sessionDir}`);
+    err.code = "PI_SESSION_MISSING";
+    err.traceRef = traceRef;
+    throw err;
+  }
+  const calls = countToolCalls(fsSync.readFileSync(file, "utf8"));
+  if (calls > 0) {
+    const err = new Error(`reviewer session ${sessionId} contains ${calls} tool call(s); reviewer must run with no tools`);
+    err.code = "REVIEWER_USED_TOOLS";
+    err.traceRef = traceRef;
+    err.toolCalls = calls;
+    throw err;
+  }
+  return file;
 }
 
 function runPiScript({ script, args, env, cwd }) {
@@ -147,6 +210,9 @@ export function createPiAdapter({ repoRoot = ROOT, dbPath = null } = {}) {
         err.traceRef = traceRef;
         err.exitCode = result.code;
         throw err;
+      }
+      if (role === "reviewer") {
+        assertReviewerUsedNoTools({ sessionDir, sessionId: session, traceRef });
       }
       const outputPath = path.join(workdir, `${role}-${n}.txt`);
       await fs.writeFile(outputPath, text, "utf8");

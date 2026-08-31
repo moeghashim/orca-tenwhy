@@ -1,0 +1,12 @@
+[
+  { "url": "https://acme.example/whitening", "http_status": 200 },
+  { "url": "https://acme.example/aligners", "http_status": 200 },
+  { "url": "https://c1.example/", "http_status": 200 },
+  { "url": "https://c1.example/", "http_status": 200 },
+  { "url": "https://blocked.example/secret", "http_status": null },
+  { "url": "https://c1.example/pricing", "http_status": 200 },
+  { "url": "https://c2.example/", "http_status": 200 },
+  { "url": "https://c3.example/", "http_status": 200 },
+  { "url": "https://c4.example/", "http_status": 200 },
+  { "url": "https://c5.example/", "http_status": 200 }
+]
