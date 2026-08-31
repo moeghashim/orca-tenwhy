@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(none open — round 6 `6487d24` `feb6ff4` `a6ef53b` landed; acceptance verify + Codex #r7 pending)_
+_(none open — round 6 `6487d24` `feb6ff4` `a6ef53b` landed; `REVIEWED: P3 issues #r7` (Codex: value-based log redaction, prepare log fields, race-free daemon lock) → `build/briefs/fix-round-7.md` dispatched)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
