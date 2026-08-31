@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "scripts"],
+  "properties": {
+    "name": { "type": "string" },
+    "private": { "type": "boolean" },
+    "version": { "type": "string" },
+    "type": { "const": "module" },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build", "preview"],
+      "properties": {
+        "build": { "const": "vite build" },
+        "preview": { "const": "vite preview" },
+        "dev": { "const": "vite" }
+      }
+    },
+    "dependencies": { "$ref": "#/$defs/viteDeps" },
+    "devDependencies": { "$ref": "#/$defs/viteDeps" }
+  },
+  "$defs": {
+    "viteDeps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vite"],
+      "properties": {
+        "vite": { "type": "string", "pattern": "^\\^[567](?:\\.\\d+){0,2}$" }
+      }
+    }
+  }
+}

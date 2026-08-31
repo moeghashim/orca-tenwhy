@@ -20,6 +20,7 @@ state/scrape/
 state/pi-sessions/
 state/customers/
 state/remotes/
+state/npm-cache/
 system/tools/.venv/
 *.tar.gz
 __pycache__/

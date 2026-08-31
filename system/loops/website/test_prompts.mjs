@@ -275,6 +275,35 @@ test("path-guard blocks ../../etc/passwd, symlink write-escape, and /Users read;
   });
   assert.equal(brandWrite?.block, true);
 
+  const cfg = guardToolCall({
+    toolName: "write",
+    input: { path: "website/vite.config.js" },
+    cwd: repo,
+  });
+  assert.equal(cfg?.block, true);
+  assert.match(String(cfg.reason), /forbidden/);
+
+  const lock = guardToolCall({
+    toolName: "write",
+    input: { path: "website/package-lock.json" },
+    cwd: repo,
+  });
+  assert.equal(lock?.block, true);
+
+  const envf = guardToolCall({
+    toolName: "write",
+    input: { path: "website/.env" },
+    cwd: repo,
+  });
+  assert.equal(envf?.block, true);
+
+  const ln = guardToolCall({
+    toolName: "write",
+    input: { path: "website/src/x.js", symlink: true },
+    cwd: repo,
+  });
+  assert.equal(ln?.block, true);
+
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

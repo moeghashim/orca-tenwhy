@@ -5,6 +5,21 @@ const READ_TOOLS = new Set(["read", "ls", "grep", "find"]);
 const WRITE_TOOLS = new Set(["write", "edit"]);
 const ALLOWED_TOOLS = new Set(["read", "write", "edit", "ls", "grep", "find"]);
 
+const FORBIDDEN_BASE = /^(vite\.config\..+|.*\.config\.(js|cjs|mjs|ts|mts|cts)|\.postcssrc.*|postcss\.config\..+|tailwind\.config\..+|\.browserslistrc|browserslist\.config\..+|tsconfig.*|jsconfig.*|\.env.*|\.npmrc|\.yarnrc.*|\.pnpmfile.*|pnpm-workspace\..+|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/;
+
+export function forbiddenWebsiteRel(rel) {
+  const posix = String(rel || "").split(path.sep).join("/");
+  const parts = posix.split("/").filter(Boolean);
+  const base = parts[parts.length - 1] || "";
+  if (parts.includes("node_modules") || parts.includes("dist")) {
+    return `forbidden executable/config file: ${posix}`;
+  }
+  if (FORBIDDEN_BASE.test(base)) {
+    return `forbidden executable/config file: ${posix}`;
+  }
+  return null;
+}
+
 export function deepestExistingAncestor(absPath) {
   let cur = path.resolve(absPath);
   while (!fs.existsSync(cur)) {
@@ -69,6 +84,9 @@ export function guardToolCall({ toolName, input = {}, cwd }) {
     }
     return undefined;
   }
+  if (input.symlink || input.link || name === "ln") {
+    return { block: true, reason: "symlinks are not allowed" };
+  }
   if (WRITE_TOOLS.has(name)) {
     const websiteRoot = path.join(cwd, "website");
     if (!isInside(resolved.resolved, websiteRoot)) {
@@ -77,6 +95,9 @@ export function guardToolCall({ toolName, input = {}, cwd }) {
     if (!isInside(resolved.ancestorReal, repoReal)) {
       return { block: true, reason: `write path escapes customer repo: ${resolved.resolved}` };
     }
+    const rel = path.relative(websiteRoot, resolved.resolved);
+    const why = forbiddenWebsiteRel(rel);
+    if (why) return { block: true, reason: why };
     return undefined;
   }
   return { block: true, reason: `tool ${name} is not allowed` };

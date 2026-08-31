@@ -23,7 +23,7 @@ Build a Vite vanilla static site under `website/`:
 
 1. `website/package.json` with `vite` as the only dependency (devDependency is fine) and scripts `dev`/`build`/`preview`. No other packages.
 2. `website/index.html` + `website/src/main.js` + `website/src/style.css`. CSS uses the values from `brand/tokens.json` (`color.bg/surface/text/accent`, `type.family.ui/mono`, `space.unit`, `radius`) — copy the values in; do not invent a second palette.
-3. Pages: home + one page per product group (if products are ungrouped, one page per product) + contact. List extra HTML files in `website/vite.config.js` `build.rollupOptions.input` so they land in `dist/`.
+3. Pages: home + one page per product group (if products are ungrouped, one page per product) + contact. Put extra pages as root-level `website/*.html` — the gate writes `vite.config.mjs`. Do not write `vite.config.*`, lockfiles, `.env*`, or `node_modules/`.
 4. All internal links are relative (`contact.html`, `whitening.html`) or root-relative and must resolve after `vite build`.
 5. Every row of `brand/IMAGE_BRIEF.md` is wired as `<img src="<declared path>">` (the `path` column, e.g. `/images/hero.svg`). Generate an SVG placeholder at `website/public${path}` (so `/images/hero.svg` → `website/public/images/hero.svg`). Give every `<img>` a meaningful `alt`.
 6. Copy is grounded in RESEARCH.json: company name and every product name appear **verbatim**. Do not invent claims, prices, or locations that are not in RESEARCH.json or BRAND.md.

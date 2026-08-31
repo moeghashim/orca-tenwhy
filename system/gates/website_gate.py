@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
+import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -21,6 +24,12 @@ import jsonschema
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA_PATH = Path(__file__).resolve().parent / "brand_tokens_schema.json"
+PKG_SCHEMA_PATH = Path(__file__).resolve().parent / "website_package_schema.json"
+VITE_TEMPLATE = Path(__file__).resolve().parent / "vite.config.template.mjs"
+SANDBOX_EXEC = Path("/usr/bin/sandbox-exec")
+NPM_CACHE = ROOT / "state" / "npm-cache"
+VITE_BIN = Path("node_modules/vite/bin/vite.js")
+GATE_PATH = "/opt/homebrew/bin:/usr/bin:/bin"
 SKIP_BUILD = "skipped: build_ok failed"
 CHECK_NAMES = [
     "brand_assets_valid",
@@ -78,47 +87,289 @@ def last_lines(text: str, n: int = 40) -> str:
     return "\n".join(lines[-n:])
 
 
-def run_npm(web: Path) -> dict:
+FORBIDDEN_BASE = (
+    "vite.config.*",
+    "*.config.js",
+    "*.config.cjs",
+    "*.config.mjs",
+    "*.config.ts",
+    "*.config.mts",
+    "*.config.cts",
+    ".postcssrc*",
+    "postcss.config.*",
+    "tailwind.config.*",
+    ".browserslistrc",
+    "browserslist.config.*",
+    "tsconfig*",
+    "jsconfig*",
+    ".env*",
+    ".npmrc",
+    ".yarnrc*",
+    ".pnpmfile*",
+    "pnpm-workspace.*",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+)
+
+
+def forbidden_rel(rel: str) -> str | None:
+    posix = rel.replace("\\", "/")
+    parts = [p for p in posix.split("/") if p and p != "."]
+    name = parts[-1] if parts else posix
+    if any(p in {"node_modules", "dist", ".git"} for p in parts):
+        return f"forbidden executable/config file: {posix}"
+    for pat in FORBIDDEN_BASE:
+        if fnmatch.fnmatch(name, pat):
+            return f"forbidden executable/config file: {posix}"
+    return None
+
+
+def scan_forbidden(web: Path) -> str | None:
     if not web.is_dir():
-        return check("build_ok", False, f"missing {web}")
-    env = {
-        **os.environ,
-        "npm_config_audit": "false",
-        "npm_config_fund": "false",
-        "npm_config_progress": "false",
-        "npm_config_update_notifier": "false",
+        return None
+    for dirpath, dirnames, filenames in os.walk(web, followlinks=False):
+        rel_dir = os.path.relpath(dirpath, web)
+        for d in list(dirnames):
+            p = Path(dirpath) / d
+            rel = str(Path(rel_dir) / d) if rel_dir != "." else d
+            if p.is_symlink():
+                return f"forbidden executable/config file: {rel}"
+            why = forbidden_rel(rel)
+            if why:
+                return why
+        for f in filenames:
+            p = Path(dirpath) / f
+            rel = str(Path(rel_dir) / f) if rel_dir != "." else f
+            if p.is_symlink():
+                return f"forbidden executable/config file: {rel}"
+            why = forbidden_rel(rel)
+            if why:
+                return why
+            try:
+                st = p.lstat()
+            except OSError:
+                continue
+            if stat.S_ISLNK(st.st_mode):
+                return f"forbidden executable/config file: {rel}"
+    return None
+
+
+def validate_package(pkg: dict) -> str | None:
+    try:
+        jsonschema.validate(instance=pkg, schema=json.loads(PKG_SCHEMA_PATH.read_text(encoding="utf-8")))
+    except jsonschema.ValidationError as exc:
+        named = str(exc.path[-1]) if exc.path else "package.json"
+        return f"package.json: {named}: {exc.message}"
+    deps: dict = {}
+    for field in ("dependencies", "devDependencies"):
+        block = pkg.get(field) or {}
+        if not isinstance(block, dict):
+            return f"package.json: {field}"
+        deps.update(block)
+    if set(deps) != {"vite"}:
+        extra = set(deps) - {"vite"}
+        return f"package.json: {next(iter(extra or {'vite'}))}"
+    return None
+
+
+def seatbelt_profile(phase: str, tree: Path, cache: Path, home: Path) -> str:
+    writes = [str(tree), str(cache), str(home), "/private/var/folders", "/private/tmp"]
+    write_rules = "\n".join(f'(allow file-write* (subpath "{p}"))' for p in writes)
+    if phase == "install":
+        net = "(allow network*)"
+    elif phase == "build":
+        net = "(deny network*)"
+    else:
+        net = '(deny network*)\n(allow network* (local ip "localhost:*"))\n(allow network* (remote ip "localhost:*"))'
+    home_deny = str(Path.home())
+    return f"""(version 1)
+(allow default)
+(deny file-write*)
+{write_rules}
+(allow file-write* (literal "/dev/null"))
+(deny file-read* (subpath "{home_deny}"))
+(allow file-read* (subpath "{tree}"))
+(allow file-read* (subpath "{cache}"))
+(allow file-read* (subpath "{home}"))
+{net}
+"""
+
+
+def gate_env(home: Path, cache: Path) -> dict:
+    user = home / ".npmrc"
+    glob = home / "npmrc-global"
+    tmp = home / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    user.write_text("", encoding="utf-8")
+    glob.write_text("", encoding="utf-8")
+    return {
+        "HOME": str(home),
+        "PATH": GATE_PATH,
+        "NPM_CONFIG_USERCONFIG": str(user),
+        "NPM_CONFIG_GLOBALCONFIG": str(glob),
+        "npm_config_cache": str(cache),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TMPDIR": str(tmp),
     }
-    install = ["npm", "ci"] if (web / "package-lock.json").is_file() else ["npm", "install"]
+
+
+def run_in_sandbox(
+    phase: str,
+    argv: list[str],
+    *,
+    tree: Path,
+    cache: Path,
+    home: Path,
+    env: dict,
+    timeout: int = BUILD_TIMEOUT,
+) -> subprocess.CompletedProcess:
+    if not SANDBOX_EXEC.is_file():
+        return subprocess.CompletedProcess(argv, 127, "", "sandbox unavailable")
+    profile = tree / f".seatbelt-{phase}.sb"
+    profile.write_text(seatbelt_profile(phase, tree, cache, home), encoding="utf-8")
+    cmd = [str(SANDBOX_EXEC), "-f", str(profile), *argv]
     try:
-        inst = subprocess.run(
-            install,
-            cwd=web,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=BUILD_TIMEOUT,
-        )
+        return subprocess.run(cmd, cwd=tree, env=env, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return check("build_ok", False, "npm install timed out after 5 min")
+        return subprocess.CompletedProcess(cmd, 124, "", f"{phase} timed out")
+
+
+def copy_allowed_tree(src: Path, dest: Path) -> str | None:
+    dest.mkdir(parents=True, exist_ok=True)
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+        rel_dir = os.path.relpath(dirpath, src)
+        dirnames[:] = [d for d in dirnames if d not in {"node_modules", "dist", ".git"}]
+        for d in list(dirnames):
+            p = Path(dirpath) / d
+            if p.is_symlink():
+                rel = str(Path(rel_dir) / d) if rel_dir != "." else d
+                return f"forbidden executable/config file: {rel}"
+        for f in filenames:
+            p = Path(dirpath) / f
+            rel = str(Path(rel_dir) / f) if rel_dir != "." else f
+            if p.is_symlink() or not p.is_file():
+                return f"forbidden executable/config file: {rel}"
+            st = p.lstat()
+            if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                return f"forbidden executable/config file: {rel}"
+            why = forbidden_rel(rel)
+            if why:
+                return why
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, target)
+    return None
+
+
+def write_vite_config(tree: Path) -> list[str]:
+    htmls = sorted(p.name for p in tree.glob("*.html") if p.is_file())
+    mapping = {Path(name).stem: name for name in htmls}
+    raw = VITE_TEMPLATE.read_text(encoding="utf-8")
+    (tree / "vite.config.mjs").write_text(raw.replace("__INPUT__", json.dumps(mapping, indent=2)), encoding="utf-8")
+    return htmls
+
+
+class BuildCtx:
+    def __init__(self) -> None:
+        self.tree: Path | None = None
+        self.home: Path | None = None
+        self.env: dict = {}
+        self.htmls: list[str] = []
+
+
+def run_build(web: Path, loop_run_id: str) -> tuple[dict, BuildCtx]:
+    ctx = BuildCtx()
+    if not web.is_dir():
+        return check("build_ok", False, f"missing {web}"), ctx
+    why = scan_forbidden(web)
+    if why:
+        return check("build_ok", False, why), ctx
+    pkg_path = web / "package.json"
+    if not pkg_path.is_file():
+        return check("build_ok", False, "missing package.json"), ctx
+    try:
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return check("build_ok", False, f"package.json: {exc}"), ctx
+    named = validate_package(pkg)
+    if named:
+        return check("build_ok", False, named), ctx
+    if not SANDBOX_EXEC.is_file():
+        return check("build_ok", False, "sandbox unavailable"), ctx
+
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", loop_run_id)[:80] or "run"
+    tree = Path("/private/tmp") / f"tenwhy-gate-{safe}"
+    if tree.exists():
+        shutil.rmtree(tree)
+    tree.mkdir(parents=True)
+    ctx.tree = tree
+    copied = copy_allowed_tree(web, tree)
+    if copied:
+        return check("build_ok", False, copied), ctx
+    ctx.htmls = write_vite_config(tree)
+    if not ctx.htmls:
+        return check("build_ok", False, "no root-level *.html"), ctx
+
+    NPM_CACHE.mkdir(parents=True, exist_ok=True)
+    home = tree / ".gate-home"
+    home.mkdir()
+    ctx.home = home
+    ctx.env = gate_env(home, NPM_CACHE)
+    vite_range = (pkg.get("devDependencies") or pkg.get("dependencies") or {}).get("vite")
+    view = run_in_sandbox(
+        "install",
+        ["npm", "view", f"vite@{vite_range}", "version", "--json"],
+        tree=tree,
+        cache=NPM_CACHE,
+        home=home,
+        env=ctx.env,
+        timeout=120,
+    )
+    if view.returncode != 0:
+        return check("build_ok", False, last_lines(view.stderr or view.stdout or "npm view failed")), ctx
+    try:
+        ver = json.loads((view.stdout or "").strip() or '""')
+        if isinstance(ver, list):
+            ver = ver[-1]
+        ver = str(ver).strip()
+    except json.JSONDecodeError:
+        return check("build_ok", False, "npm view vite version: unparsable"), ctx
+    inst = run_in_sandbox(
+        "install",
+        ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", "--no-package-lock", f"vite@{ver}"],
+        tree=tree,
+        cache=NPM_CACHE,
+        home=home,
+        env=ctx.env,
+    )
     if inst.returncode != 0:
-        return check("build_ok", False, last_lines(inst.stderr or inst.stdout))
-    try:
-        built = subprocess.run(
-            ["npm", "run", "build"],
-            cwd=web,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=BUILD_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        return check("build_ok", False, "npm run build timed out after 5 min")
+        return check("build_ok", False, last_lines(inst.stderr or inst.stdout)), ctx
+    vite_js = tree / VITE_BIN
+    if not vite_js.is_file():
+        return check("build_ok", False, "vite binary missing after install"), ctx
+    built = run_in_sandbox(
+        "build",
+        ["node", str(VITE_BIN), "build", "--config", "vite.config.mjs"],
+        tree=tree,
+        cache=NPM_CACHE,
+        home=home,
+        env=ctx.env,
+    )
     if built.returncode != 0:
-        return check("build_ok", False, last_lines(built.stderr or built.stdout))
-    dist = web / "dist"
+        err = (built.stderr or built.stdout or "").lower()
+        if "sandbox" in err and "fail" in err:
+            return check("build_ok", False, "sandbox unavailable"), ctx
+        return check("build_ok", False, last_lines(built.stderr or built.stdout)), ctx
+    dist = tree / "dist"
     if not dist.is_dir():
-        return check("build_ok", False, "npm run build exited 0 but dist/ is missing")
-    return check("build_ok", True, "ok")
+        return check("build_ok", False, "vite build exited 0 but dist/ is missing"), ctx
+    dest = web / "dist"
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(dist, dest)
+    return check("build_ok", True, "ok"), ctx
 
 
 def parse_image_brief_paths(text: str) -> list[str]:
@@ -267,10 +518,15 @@ def links_ok(workdir: Path) -> dict:
         raw = strip_url(url)
         if is_ignored(raw):
             return
+        while raw.startswith("./"):
+            raw = raw[2:]
         referenced.add(raw)
+        referenced.add("/" + raw.lstrip("/"))
+        referenced.add(raw.lstrip("/"))
         parsed = urlparse(raw)
         if parsed.path:
             referenced.add(parsed.path)
+            referenced.add(parsed.path.lstrip("/"))
 
     for html_file in html_files:
         html = html_file.read_text(encoding="utf-8", errors="replace")
@@ -393,22 +649,44 @@ def lighthouse_skip_honoured() -> bool:
     return os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1"
 
 
-def lighthouse_check(workdir: Path) -> dict:
+def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
     if lighthouse_skip_honoured():
         return check("lighthouse≥85", True, "skipped: WEBSITE_GATE_SKIP_LIGHTHOUSE=1")
-    web = workdir / "website"
+    tree = ctx.tree
+    if tree is None or not (tree / VITE_BIN).is_file():
+        return check("lighthouse≥85", False, "chrome launch failed: preview tree missing")
     port = free_port()
-    env = {**os.environ, "BROWSER": "none"}
+    chrome_dir = tree / "chrome-user"
+    chrome_dir.mkdir(exist_ok=True)
+    out_json = tree / "lh.json"
+    chrome_flags = (
+        f"--headless=new --user-data-dir={chrome_dir} "
+        '--host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"'
+    )
+    preview_cmd = [
+        "node",
+        str(VITE_BIN),
+        "preview",
+        "--port",
+        str(port),
+        "--strictPort",
+        "--host",
+        "127.0.0.1",
+    ]
+    if not SANDBOX_EXEC.is_file():
+        return check("lighthouse≥85", False, "sandbox unavailable")
+    profile = tree / ".seatbelt-preview.sb"
+    profile.write_text(seatbelt_profile("preview", tree, NPM_CACHE, ctx.home or tree), encoding="utf-8")
+    env = ctx.env or gate_env(ctx.home or tree, NPM_CACHE)
     preview = subprocess.Popen(
-        ["npx", "vite", "preview", "--port", str(port), "--strictPort", "--host", "127.0.0.1"],
-        cwd=web,
+        [str(SANDBOX_EXEC), "-f", str(profile), *preview_cmd],
+        cwd=tree,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
     )
-    out_json = Path(tempfile.mkdtemp(prefix="tenwhy-lh-")) / "lh.json"
     try:
         if not wait_port(port, timeout=30):
             err = ""
@@ -417,27 +695,37 @@ def lighthouse_check(workdir: Path) -> dict:
                     err = preview.stderr.read()[-2000:]
                 except Exception:
                     err = ""
-            return check("lighthouse≥85", False, f"vite preview did not bind :{port} {err}".strip())
-        cmd = [
+            return check("lighthouse≥85", False, f"chrome launch failed: vite preview did not bind :{port} {err}".strip())
+        lh_cmd = [
             "lighthouse",
             f"http://127.0.0.1:{port}/",
             "--only-categories=performance,accessibility",
             "--output=json",
             f"--output-path={out_json}",
-            "--chrome-flags=--headless=new",
+            f"--chrome-flags={chrome_flags}",
             "--quiet",
         ]
         try:
-            lh = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            lh = run_in_sandbox(
+                "preview",
+                lh_cmd,
+                tree=tree,
+                cache=NPM_CACHE,
+                home=ctx.home or tree,
+                env=env,
+                timeout=120,
+            )
         except subprocess.TimeoutExpired:
             return check("lighthouse≥85", False, "lighthouse timed out")
+        combined = (lh.stderr or "") + (lh.stdout or "")
         if lh.returncode != 0 or not out_json.is_file():
-            return check(
-                "lighthouse≥85",
-                False,
-                last_lines((lh.stderr or lh.stdout or "lighthouse failed"), 40),
-            )
-        data = json.loads(out_json.read_text(encoding="utf-8"))
+            if "chrome" in combined.lower() or "chromium" in combined.lower() or "launch" in combined.lower():
+                return check("lighthouse≥85", False, f"chrome launch failed: {last_lines(combined, 8)}")
+            return check("lighthouse≥85", False, last_lines(combined or "lighthouse failed", 40))
+        try:
+            data = json.loads(out_json.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return check("lighthouse≥85", False, "chrome launch failed: lighthouse json unparsable")
         cats = data.get("categories") or {}
         perf = (cats.get("performance") or {}).get("score")
         a11y = (cats.get("accessibility") or {}).get("score")
@@ -450,31 +738,34 @@ def lighthouse_check(workdir: Path) -> dict:
         return check("lighthouse≥85", ok, detail)
     finally:
         stop_pg(preview)
-        try:
-            out_json.unlink(missing_ok=True)
-            out_json.parent.rmdir()
-        except OSError:
-            pass
 
 
-def run_checks(workdir: Path) -> list[dict]:
+def cleanup_ctx(ctx: BuildCtx) -> None:
+    if ctx.tree and ctx.tree.exists():
+        shutil.rmtree(ctx.tree, ignore_errors=True)
+
+
+def run_checks(workdir: Path, loop_run_id: str = "run") -> list[dict]:
     brand = brand_assets(workdir)
-    built = run_npm(workdir / "website")
-    if not built["passed"]:
+    built, ctx = run_build(workdir / "website", loop_run_id)
+    try:
+        if not built["passed"]:
+            return [
+                brand,
+                built,
+                check("links_ok", False, SKIP_BUILD),
+                check("copy_grounded", False, SKIP_BUILD),
+                check("lighthouse≥85", False, SKIP_BUILD),
+            ]
         return [
             brand,
             built,
-            check("links_ok", False, SKIP_BUILD),
-            check("copy_grounded", False, SKIP_BUILD),
-            check("lighthouse≥85", False, SKIP_BUILD),
+            links_ok(workdir),
+            copy_grounded(workdir),
+            lighthouse_check(workdir, ctx),
         ]
-    return [
-        brand,
-        built,
-        links_ok(workdir),
-        copy_grounded(workdir),
-        lighthouse_check(workdir),
-    ]
+    finally:
+        cleanup_ctx(ctx)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -483,7 +774,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True)
     parser.add_argument("--loop-run-id", required=True)
     args = parser.parse_args(argv)
-    checks = run_checks(Path(args.workdir))
+    checks = run_checks(Path(args.workdir), args.loop_run_id)
     print(json.dumps(checks, ensure_ascii=False))
     return 0 if checks and all(c["passed"] for c in checks) else 1
 
