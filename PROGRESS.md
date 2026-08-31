@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(open: `REVIEWED: P3 issues #r13` — Codex: `daemon_lock.mjs:66` the aged-reaper unlink/recreate repeats the race (one contender can unlink another's fresh reaper); asks for a kernel-held recovery lease / non-racy ownership protocol + two-contender aged-reaper test → round 10. History: #r12 `daemon_lock.mjs:75` → round 9 `134b22a` (reaper lock) → #r13. Closed this session: P5 gate hotfixes `b912281` `b0b1dd1` `e2075bb` `ebc7e1a` → `REVIEWED: P5 ok #r12`; round 8 `9c4f47d` `8292673` `4d627ce` `8b317d0` reviewed #r12.)_
+_(open: `REVIEWED: P3 issues #r14` — Codex: `daemon_lock.mjs:109` legacy text-lock migration (unlink/retry) can remove another contender's fresh SQLite lock → serialize behind a stable SQLite migration lock + concurrent legacy-text test → `build/briefs/fix-round-11.md`. History: #r12 `:75` → round 9 `134b22a` (reaper) → #r13 `:66` → round 10 `c99a77e` (SQLite-backed lock, accepted except migration) → #r14. Closed this session: P5 gate hotfixes → `REVIEWED: P5 ok #r12`; round 8 reviewed #r12.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
