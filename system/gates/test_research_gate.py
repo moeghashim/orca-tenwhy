@@ -84,6 +84,11 @@ class ResearchGateTests(unittest.TestCase):
     def test_fail_schema(self):
         self._assert_case("fail_schema", 1, "schema_valid")
 
+    def test_fail_schema_nan(self):
+        self._assert_case("fail_schema_nan", 1, "schema_valid")
+        _, checks = run_case("fail_schema_nan")
+        self.assertIn("non-standard JSON constant", checks[0]["detail"])
+
     def test_fail_competitors(self):
         self._assert_case("fail_competitors", 1, "competitors≥5")
 

@@ -104,10 +104,21 @@ def run_checks(workdir: Path, db_path: Path, loop_run_id: str) -> list[dict]:
                 *[check(n, False, SKIP) for n in CHECK_NAMES[1:]],
             ]
         try:
-            data = json.loads(research_path.read_text(encoding="utf-8"))
+            def _reject_const(_s):
+                raise ValueError("non-standard JSON constant")
+
+            data = json.loads(research_path.read_text(encoding="utf-8"), parse_constant=_reject_const)
         except json.JSONDecodeError as exc:
             return [
                 check("schema_valid", False, f"unparsable RESEARCH.json: {exc}"),
+                *[check(n, False, SKIP) for n in CHECK_NAMES[1:]],
+            ]
+        except ValueError as exc:
+            msg = str(exc)
+            if "non-standard JSON constant" not in msg:
+                msg = f"non-standard JSON constant: {msg}"
+            return [
+                check("schema_valid", False, "non-standard JSON constant"),
                 *[check(n, False, SKIP) for n in CHECK_NAMES[1:]],
             ]
         try:
