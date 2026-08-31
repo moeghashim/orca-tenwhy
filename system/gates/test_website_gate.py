@@ -240,6 +240,49 @@ class WebsiteGateTests(unittest.TestCase):
         checks = self._assert_case("fail_copy_substring", 1, "copy_grounded")
         self.assertIn("company.name", checks[3]["detail"])
 
+    def test_chrome_launch_failed_detail(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import BuildCtx, lighthouse_check
+
+        prev_skip = os.environ.pop("WEBSITE_GATE_SKIP_LIGHTHOUSE", None)
+        prev_dev = os.environ.pop("TENWHY_DEV", None)
+        try:
+            result = lighthouse_check(Path("/tmp"), BuildCtx())
+            self.assertFalse(result["passed"])
+            self.assertTrue(result["detail"].startswith("chrome launch failed:"), result["detail"])
+        finally:
+            if prev_skip is not None:
+                os.environ["WEBSITE_GATE_SKIP_LIGHTHOUSE"] = prev_skip
+            if prev_dev is not None:
+                os.environ["TENWHY_DEV"] = prev_dev
+
+    def test_checks_1_to_4_with_empty_home(self):
+        prev_home = os.environ.get("HOME")
+        empty = tempfile.mkdtemp()
+        os.environ["HOME"] = empty
+        prev_skip = os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE")
+        prev_dev = os.environ.get("TENWHY_DEV")
+        os.environ["WEBSITE_GATE_SKIP_LIGHTHOUSE"] = "1"
+        os.environ["TENWHY_DEV"] = "1"
+        try:
+            _rc, checks, _wd = run_case("pass")
+            for c in checks[:4]:
+                self.assertTrue(c["passed"], c)
+        finally:
+            if prev_home is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = prev_home
+            if prev_skip is None:
+                os.environ.pop("WEBSITE_GATE_SKIP_LIGHTHOUSE", None)
+            else:
+                os.environ["WEBSITE_GATE_SKIP_LIGHTHOUSE"] = prev_skip
+            if prev_dev is None:
+                os.environ.pop("TENWHY_DEV", None)
+            else:
+                os.environ["TENWHY_DEV"] = prev_dev
+            shutil.rmtree(empty, ignore_errors=True)
+
     def test_lighthouse_skip_requires_tenwhy_dev(self):
         sys.path.insert(0, str(GATE.parent))
         from website_gate import lighthouse_skip_honoured  # noqa: E402

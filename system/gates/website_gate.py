@@ -32,6 +32,7 @@ SANDBOX_EXEC = Path("/usr/bin/sandbox-exec")
 NPM_CACHE = ROOT / "state" / "npm-cache"
 VITE_BIN = Path("node_modules/vite/bin/vite.js")
 GATE_PATH = "/opt/homebrew/bin:/usr/bin:/bin"
+OPERATOR_HOME = str(Path.home())
 SKIP_BUILD = "skipped: build_ok failed"
 CHECK_NAMES = [
     "brand_assets_valid",
@@ -184,7 +185,7 @@ def seatbelt_profile(phase: str, tree: Path, cache: Path, home: Path) -> str:
         net = "(deny network*)"
     else:
         net = '(deny network*)\n(allow network* (local ip "localhost:*"))\n(allow network* (remote ip "localhost:*"))'
-    home_deny = str(Path.home())
+    home_deny = OPERATOR_HOME
     return f"""(version 1)
 (allow default)
 (deny file-write*)
@@ -856,12 +857,16 @@ def run_checks(workdir: Path, loop_run_id: str = "run") -> list[dict]:
                 check("copy_grounded", False, SKIP_BUILD),
                 check("lighthouse≥85", False, SKIP_BUILD),
             ]
+        try:
+            lh = lighthouse_check(workdir, ctx)
+        except Exception as exc:
+            lh = check("lighthouse≥85", False, f"chrome launch failed: {exc}")
         return [
             brand,
             built,
             links_ok(workdir),
             copy_grounded(workdir),
-            lighthouse_check(workdir, ctx),
+            lh,
         ]
     finally:
         cleanup_ctx(ctx)
