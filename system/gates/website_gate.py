@@ -776,6 +776,10 @@ def inspect_ref(url: str, *, image_brief: bool = False) -> tuple[str, str | None
     if is_external_scheme(path):
         return ("reject" if image_brief else "ignore"), None
     lower = path.lower()
+    if image_brief and any(ch in path for ch in "`\"'"):
+        # IMAGE_BRIEF paths are file paths, not markup: a leftover (mismatched) quote or
+        # backtick must never resolve, even if an oddly named file happens to match.
+        return "reject", None
     if "\x00" in path or "\\" in path or "%00" in lower or "%2f" in lower or "%5c" in lower:
         return "reject", None
     if has_dot_dot_segment(path):

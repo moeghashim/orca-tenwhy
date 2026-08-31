@@ -704,3 +704,24 @@ class GateArtifactsTests(unittest.TestCase):
             # a symlinked dist is still forbidden
             shutil.rmtree(web / "dist"); (web / "dist").symlink_to(pathlib.Path(tmp))
             self.assertIsNotNone(mod.scan_forbidden(web))
+
+
+class ImageBriefResolverTests(unittest.TestCase):
+    def test_mismatched_delimiters_never_resolve(self):
+        # Codex #r10: test the resolver, not only the parser — a leftover quote/backtick
+        # must not match an oddly named file in dist.
+        import importlib.util, pathlib, tempfile
+        spec = importlib.util.spec_from_file_location("website_gate", pathlib.Path(__file__).with_name("website_gate.py"))
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = pathlib.Path(tmp) / "dist"; (dist / "public").mkdir(parents=True)
+            (dist / "index.html").write_text("<html></html>")
+            (dist / "public" / "hero.svg").write_text("<svg/>")
+            (dist / "public" / "`hero.svg'").write_text("<svg/>")
+            (dist / "public" / "hero.svg'").write_text("<svg/>")
+            self.assertIsNotNone(mod.resolve_in_dist(dist, dist / "index.html", "/public/hero.svg", image_brief=True))
+            for bad in ("`/public/hero.svg'", "/public/hero.svg'", "\"/public/hero.svg", "/public/`hero.svg'"):
+                self.assertTrue(mod.url_rejected(bad, image_brief=True), bad)
+                self.assertIsNone(mod.resolve_in_dist(dist, dist / "index.html", bad, image_brief=True), bad)
+            # non-brief link checking is unchanged (quotes are simply not resolvable paths there)
+            self.assertIsNotNone(mod.resolve_in_dist(dist, dist / "index.html", "/public/hero.svg"))
