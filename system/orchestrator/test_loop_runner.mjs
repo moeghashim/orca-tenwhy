@@ -304,6 +304,32 @@ test("I: executor prompt includes idea/site_url and handoff JSON from inputs", a
   assert.equal(payload.inputs.site_url, "https://example.com/clinic");
 });
 
+test("J: trailing prose after JSON fence → revise FORMAT, reviewer never called", async (t) => {
+  let reviewerCalls = 0;
+  const inner = createFixtureAdapter({
+    executor: [
+      `${withResearchJson("draft")}\nThanks, please review.\n`,
+      `${withResearchJson("draft2")}\nThanks, please review.\n`,
+      `${withResearchJson("draft3")}\nThanks, please review.\n`,
+      `${withResearchJson("draft4")}\nThanks, please review.\n`,
+    ],
+    reviewer: [JSON.stringify({ verdict: "approve", notes: "should not run" })],
+  });
+  const capturing = {
+    async run(args) {
+      if (args.role === "reviewer") reviewerCalls += 1;
+      return inner.run(args);
+    },
+  };
+  const { result } = await run(t, capturing, async () => {
+    throw new Error("gate must not run");
+  });
+  assert.equal(result.iterations[0].verdict, "revise");
+  assert.match(result.iterations[0].notes, /^FORMAT:/);
+  assert.match(result.iterations[0].notes, /JSON fence must be the last content of the message/);
+  assert.equal(reviewerCalls, 0);
+});
+
 test("H: executor output with no JSON block → revise FORMAT, reviewer never called", async (t) => {
   let reviewerCalls = 0;
   const inner = createFixtureAdapter({

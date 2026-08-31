@@ -6,13 +6,17 @@ import { utcNow } from "../../orchestrator/util.mjs";
 export function parseLastFencedJson(text) {
   const src = String(text ?? "");
   const fence = /```(?:json)?[ \t]*\r?\n([\s\S]*?)```/gi;
-  let lastRaw = null;
-  for (const m of src.matchAll(fence)) lastRaw = m[1];
-  if (lastRaw == null) {
+  let lastMatch = null;
+  for (const m of src.matchAll(fence)) lastMatch = m;
+  if (lastMatch == null) {
     return { ok: false, error: "executor output has no fenced JSON block" };
   }
+  const after = src.slice(lastMatch.index + lastMatch[0].length);
+  if (after.trim() !== "") {
+    return { ok: false, error: "JSON fence must be the last content of the message" };
+  }
   try {
-    return { ok: true, value: JSON.parse(lastRaw) };
+    return { ok: true, value: JSON.parse(lastMatch[1]) };
   } catch (err) {
     return { ok: false, error: `JSON parse error: ${err.message}` };
   }
