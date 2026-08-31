@@ -88,6 +88,8 @@ P5-fix3 (Codex `P5 issues #r3`): `WEBSITE_GATE_SKIP_LIGHTHOUSE=1 TENWHY_DEV=1 sy
 
 P5-fix4 (Codex `P5 issues #r4`): `WEBSITE_GATE_SKIP_LIGHTHOUSE=1 TENWHY_DEV=1 system/tools/.venv/bin/python -m unittest system.gates.test_website_gate.WebsiteGateTests.test_build_preview_profiles_are_a_real_read_allowlist system.gates.test_website_gate.WebsiteGateTests.test_fail_build_absolute_import system.gates.test_website_gate.WebsiteGateTests.test_pass system.gates.test_website_gate.WebsiteGateTests.test_pass_multipage` → `Ran 4 tests in 6.982s` `OK` `exit=0`. Generated profiles have no root-wide subpath read grant; sandbox-exec DENIED `/etc/hosts`, `/private/etc/passwd`, `~/.gitconfig`; `node -e console.log('ok')` rc=0; Vite `/@fs/private/etc/passwd?raw` still fails under the build profile; `pass` / `pass_multipage` still build. `_pending_`
 
+P5-fix4 item 3 (Codex `P5-deploy issues #r1`): `node --test system/orchestrator/test_provision.mjs` → `✔ provision.sh refuses ../x, /tmp/x, and TENWHY_PROVISION_DIR=/tmp (exit 2)` `tests 1` `pass 1` `fail 0` `exit=0`. `_pending_`
+
 P5-fix2 vite allowlist (`npm view vite@<exact> version dist.integrity`, 2026-08-30):
 
 - `5` → `5.4.21` `sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw==`

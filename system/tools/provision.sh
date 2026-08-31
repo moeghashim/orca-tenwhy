@@ -14,10 +14,54 @@ if [[ -z "$ENGAGEMENT_ID" || -z "$SLUG" ]]; then
   echo "usage: provision.sh <engagement-id> <slug>" >&2
   exit 2
 fi
+if [[ ! "$ENGAGEMENT_ID" =~ ^[A-Za-z0-9_-]{1,64}$ || ! "$SLUG" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
+  echo "provision.sh: invalid engagement-id or slug" >&2
+  exit 2
+fi
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-WS="${TENWHY_PROVISION_DIR:-$ROOT/state/provision/$ENGAGEMENT_ID}"
-RECORD="$ROOT/state/provision/${ENGAGEMENT_ID}.json"
+mkdir -p "$ROOT/state/provision"
+PROVISION_ROOT="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$ROOT/state/provision")"
+confine() {
+  python3 - "$1" "$PROVISION_ROOT" <<'PY'
+import os, sys
+candidate, root = sys.argv[1], sys.argv[2]
+root = os.path.realpath(root)
+cand = os.path.abspath(os.path.expanduser(candidate))
+parts = []
+p = cand
+while p and not os.path.lexists(p):
+    p, base = os.path.split(p)
+    if not base:
+        break
+    if base in (os.pardir, os.curdir):
+        sys.stderr.write("provision.sh: path escapes state/provision\n")
+        sys.exit(2)
+    parts.append(base)
+    if p == os.path.dirname(p):
+        break
+prefix = os.path.realpath(p) if p and os.path.lexists(p) else os.path.abspath(p or os.sep)
+resolved = prefix
+for part in reversed(parts):
+    resolved = os.path.join(resolved, part)
+resolved = os.path.normpath(resolved)
+try:
+    common = os.path.commonpath([resolved, root])
+except ValueError:
+    common = ""
+if common != root:
+    sys.stderr.write("provision.sh: path escapes state/provision\n")
+    sys.exit(2)
+print(resolved)
+PY
+}
+
+if [[ -n "${TENWHY_PROVISION_DIR:-}" ]]; then
+  WS="$(confine "$TENWHY_PROVISION_DIR")" || exit 2
+else
+  WS="$(confine "$PROVISION_ROOT/$ENGAGEMENT_ID")" || exit 2
+fi
+RECORD="$(confine "$PROVISION_ROOT/${ENGAGEMENT_ID}.json")" || exit 2
 PROJECT_NAME="tenwhy-${SLUG}"
 mkdir -p "$WS" "$(dirname "$RECORD")"
 
