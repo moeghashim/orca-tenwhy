@@ -68,7 +68,7 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
 .runs-head { height: 34px; background: var(--surface); border-bottom: 1px solid var(--ink);
   font-size: 10.5px; letter-spacing: .05em; color: var(--muted); padding-left: 19px; }
 .runs-row { height: var(--row); border-bottom: 1px solid var(--canvas); cursor: pointer;
-  transition: background .8s ease; }
+  transition: background-color 800ms ease-out; }
 .runs-row:hover { background: var(--canvas); }
 .eng-cell { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .eng-name { font-size: 12.5px; font-weight: 500; }

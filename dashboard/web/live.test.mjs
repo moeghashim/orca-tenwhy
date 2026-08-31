@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { renderApp } from "./src/app.js";
@@ -57,6 +58,35 @@ test("applyPatch changes a cell in place with the row order unchanged and the ro
   assert.ok(beforeNodes[1].isSameNode(afterNodes[1]));
   assert.match(root.querySelector("[data-run-row='eng_a']").textContent, /patched note/);
   assert.ok(store.flashed.has("eng_a"));
+});
+
+test("flashed row ids clear after 800ms and CSS eases the background out", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "running", active_loop: "company-research", last_event_at: "2026-08-30T21:59:00Z", last_note: "old", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const store = createStore(snap);
+  store.applyPatch({
+    entities: { engagements: [{ ...snap.engagements[0], last_note: "next" }] },
+  });
+  assert.ok(store.flashed.has("eng_a"));
+  t.mock.timers.tick(799);
+  assert.ok(store.flashed.has("eng_a"));
+  t.mock.timers.tick(1);
+  assert.equal(store.flashed.has("eng_a"), false);
+  const css = fs.readFileSync(new URL("./src/style.css", import.meta.url), "utf8");
+  assert.match(css, /transition:\s*background-color\s+800ms\s+ease-out/);
 });
 
 test("loading/empty/disconnected states render the exact copy", () => {

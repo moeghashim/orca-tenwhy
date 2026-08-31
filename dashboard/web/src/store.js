@@ -1,7 +1,10 @@
+const FLASH_MS = 800;
+
 export function createStore(initial = null) {
   let snapshot = initial;
   let engagementOrder = initial?.engagements?.map((e) => e.id) ?? [];
   let flashed = new Set();
+  const flashTimers = new Map();
   let sse = { state: "live", retry: 0, retryIn: 0, closedAt: null };
   const listeners = new Set();
 
@@ -9,11 +12,26 @@ export function createStore(initial = null) {
     for (const fn of listeners) fn();
   }
 
+  function unflash(id) {
+    flashTimers.delete(id);
+    if (!flashed.has(id)) return;
+    flashed.delete(id);
+    emit();
+  }
+
   function replaceById(list, row, flash = true) {
     const i = list.findIndex((r) => r.id === row.id);
     if (i >= 0) list[i] = row;
     else list.push(row);
-    if (flash) flashed.add(row.id);
+    if (flash) {
+      flashed.add(row.id);
+      const prev = flashTimers.get(row.id);
+      if (prev) clearTimeout(prev);
+      flashTimers.set(
+        row.id,
+        setTimeout(() => unflash(row.id), FLASH_MS),
+      );
+    }
   }
 
   return {
@@ -54,6 +72,8 @@ export function createStore(initial = null) {
       emit();
     },
     clearFlashed() {
+      for (const t of flashTimers.values()) clearTimeout(t);
+      flashTimers.clear();
       flashed = new Set();
       emit();
     },
