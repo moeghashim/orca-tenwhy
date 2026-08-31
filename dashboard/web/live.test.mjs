@@ -147,6 +147,37 @@ test("flashed row ids clear after 800ms and CSS eases the background out", (t) =
   assert.match(css, /transition:\s*background-color\s+800ms\s+ease-out/);
 });
 
+test("flash background restores after 800ms", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "running", active_loop: "company-research", last_event_at: "2026-08-30T21:59:00Z", last_note: "old", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      { id: "run_a", engagement_id: "eng_a", loop_name: "company-research", attempt: 0, status: "running", iteration_count: 1, last_note: "", last_event_at: "2026-08-30T21:59:00Z" },
+    ],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const { root, store } = mount({ snap });
+  store.applyPatch({
+    entities: { engagements: [{ ...snap.engagements[0], last_note: "next" }] },
+  });
+  const row = root.querySelector("[data-run-row='eng_a']");
+  assert.ok(row.classList.contains("is-flash"));
+  assert.notEqual(row.style.background, "");
+  t.mock.timers.tick(800);
+  assert.equal(store.flashed.has("eng_a"), false);
+  assert.equal(row.classList.contains("is-flash"), false);
+  assert.equal(row.style.background, "");
+});
+
 test("failures keep card order across patches and re-sort after reconnect snapshot", () => {
   const run = (id, eng, status) => ({
     id,

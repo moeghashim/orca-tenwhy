@@ -154,10 +154,12 @@ function emptyBlock(glyph, title, sentence) {
   );
 }
 
-function runRowBackground(eng, run, store) {
+function applyRunRowFlash(row, eng, run, store) {
   const flashed = store.flashed.has(eng.id) || (run && store.flashed.has(run.id));
-  const nh = eng.status === "needs_human";
-  return flashed ? FLASH : nh ? "var(--status-needs_human-row)" : "#ffffff";
+  row.classList.toggle("is-flash", flashed);
+  if (flashed) row.style.background = FLASH;
+  else if (eng.status === "needs_human") row.style.background = "var(--status-needs_human-row)";
+  else row.style.background = "";
 }
 
 function paintBadge(node, kind, value) {
@@ -202,7 +204,7 @@ function fillRunRow(row, eng, store, now) {
   const n = run?.iteration_count ?? 0;
   const attempt = run?.attempt ?? 0;
   row.style.height = ROW_H;
-  row.style.background = runRowBackground(eng, run, store);
+  applyRunRowFlash(row, eng, run, store);
   if (!row.querySelector("[data-note]")) {
     row.append(
       el(
