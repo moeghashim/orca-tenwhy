@@ -1,0 +1,14 @@
+{
+  "company": {
+    "name": "Acme Dental",
+    "summary": "Boutique dental clinic in Amman",
+    "customer_products": [
+      { "id": "cp_01", "name": "Teeth whitening", "price": 80, "url": "https://acme.example/whitening" },
+      { "id": "cp_02", "name": "Clear aligners", "price": 1200, "url": "https://acme.example/aligners" },
+      { "id": "cp_03", "name": "Hygiene checkup", "price": 40, "url": "https://acme.example/checkup" }
+    ]
+  },
+  "competitors": [],
+  "product_matches": [],
+  "enhancement_ideas": []
+}
