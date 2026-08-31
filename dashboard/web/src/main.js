@@ -1,8 +1,11 @@
 import { renderApp } from "./app.js";
 import { connectSse } from "./sse.js";
+import { applyStatusVars } from "./status.js";
 import { createStore } from "./store.js";
 import { captureServerTime, isoFromMs, serverNow } from "./time.js";
 import "./style.css";
+
+applyStatusVars();
 
 const store = createStore(null);
 const root = document.getElementById("app");

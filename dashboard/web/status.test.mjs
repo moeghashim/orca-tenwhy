@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import { ENUMS, statusOf, tokenColors, tokens } from "./src/status.js";
 
@@ -31,4 +32,15 @@ test("every enum value resolves and unknown cannot introduce a colour outside to
   } finally {
     console.warn = orig;
   }
+});
+
+test("style.css and app.js have no hardcoded status colours", () => {
+  const css = fs.readFileSync(new URL("./src/style.css", import.meta.url), "utf8");
+  const js = fs.readFileSync(new URL("./src/app.js", import.meta.url), "utf8");
+  for (const hex of ["#2563eb", "#059669", "#dc2626", "#b45309", "#71717a"]) {
+    assert.equal(css.toLowerCase().includes(hex), false, `style.css still has ${hex}`);
+    assert.equal(js.toLowerCase().includes(hex), false, `app.js still has ${hex}`);
+  }
+  assert.equal(/rgba\s*\(/i.test(css), false, "style.css still has rgba() status tints");
+  assert.equal(/rgba\s*\(/i.test(js), false, "app.js still has rgba() status tints");
 });

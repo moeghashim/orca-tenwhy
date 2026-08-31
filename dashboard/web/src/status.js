@@ -27,6 +27,22 @@ export const ENUMS = {
   verdict: ["revise", "approve", "reject", "escalate"],
 };
 
+export function applyStatusVars(doc = globalThis.document) {
+  const root = doc?.documentElement;
+  if (!root?.style) return;
+  for (const [name, s] of Object.entries(STATUS)) {
+    root.style.setProperty(`--status-${name}-fg`, s.fg);
+    root.style.setProperty(`--status-${name}-bg`, s.bg);
+    root.style.setProperty(`--status-${name}-border`, s.border);
+  }
+  root.style.setProperty("--link", tokens.color.accent.link);
+  root.style.setProperty("--link-hover", tokens.color.accent.linkHover);
+  root.style.setProperty("--muted", tokens.color.text.muted);
+  root.style.setProperty("--status-flash", tokens.color.liveFlash);
+  root.style.setProperty("--status-needs_human-row", "rgba(217,119,6,0.04)");
+  root.style.setProperty("--status-failed-tint", "rgba(220,38,38,0.06)");
+}
+
 export function tokenColors() {
   const set = new Set();
   for (const s of Object.values(STATUS)) {

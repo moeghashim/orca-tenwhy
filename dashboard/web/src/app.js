@@ -1,4 +1,4 @@
-import { statusOf, tokens } from "./status.js";
+import { applyStatusVars, statusOf, tokens } from "./status.js";
 import { clockTime, isRecent, rel, serverNow } from "./time.js";
 
 const ROW_H = `${tokens.space.tableRowHeight}px`;
@@ -157,7 +157,7 @@ function emptyBlock(glyph, title, sentence) {
 function runRowBackground(eng, run, store) {
   const flashed = store.flashed.has(eng.id) || (run && store.flashed.has(run.id));
   const nh = eng.status === "needs_human";
-  return flashed ? FLASH : nh ? "rgba(217,119,6,0.04)" : "#ffffff";
+  return flashed ? FLASH : nh ? "var(--status-needs_human-row)" : "#ffffff";
 }
 
 function fillRunRow(row, eng, store, now) {
@@ -430,7 +430,7 @@ function renderLoop(store, route, now, go) {
     gateCard.append(
       el(
         "div",
-        { class: "gate-row", style: { background: ok ? "transparent" : "rgba(220,38,38,0.06)" } },
+        { class: "gate-row", style: { background: ok ? "transparent" : "var(--status-failed-tint)" } },
         el("span", { style: { color: gs.fg } }, gs.glyph),
         el("span", { class: "mono" }, g.check_name),
         el("span", { class: "mono", style: { color: gs.fg } }, ok ? "pass" : "fail"),
@@ -580,6 +580,7 @@ function renderCustomers(store, now) {
 }
 
 export function renderApp(root, { store, hash, now, go = (h) => { window.location.hash = h; } }) {
+  applyStatusVars();
   if (now == null) now = serverNow(store.snapshot);
   const route = parseHash(hash);
   const existing = root.querySelector(":scope > .shell");
