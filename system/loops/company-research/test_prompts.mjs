@@ -92,3 +92,35 @@ test("validateVerdict accepts five check-numbered lines and leaves approve", () 
   assert.equal(checked.verdict, "approve");
   assert.equal(checked.notes, notes);
 });
+
+test("validateVerdict coerces FORMAT:-prefixed approve to revise", () => {
+  const checked = validateVerdict({
+    verdict: "approve",
+    notes: "FORMAT: reviewer notes must enumerate checks 1–5",
+  });
+  assert.equal(checked.verdict, "revise");
+  assert.equal(checked.notes, "FORMAT: reviewer notes must enumerate checks 1–5");
+});
+
+test("validateVerdict coerces approve whose numbered lines are only URLs", () => {
+  const notes = [1, 2, 3, 4, 5].map((n) => `${n}. https://example.com/check-${n}`).join("\n");
+  const checked = validateVerdict({ verdict: "approve", notes });
+  assert.equal(checked.verdict, "revise");
+  assert.equal(checked.notes, "FORMAT: reviewer notes must enumerate checks 1–5");
+});
+
+test("validateVerdict coerces numbered lines that lack a pass/fail token", () => {
+  const notes = [1, 2, 3, 4, 5]
+    .map((n) => `${n}. schema looks valid extra words here`)
+    .join("\n");
+  const checked = validateVerdict({ verdict: "approve", notes });
+  assert.equal(checked.verdict, "revise");
+  assert.equal(checked.notes, "FORMAT: reviewer notes must enumerate checks 1–5");
+});
+
+test("validateVerdict coerces numbered lines with fewer than three non-URL words", () => {
+  const notes = [1, 2, 3, 4, 5].map((n) => `${n}. pass ok`).join("\n");
+  const checked = validateVerdict({ verdict: "approve", notes });
+  assert.equal(checked.verdict, "revise");
+  assert.equal(checked.notes, "FORMAT: reviewer notes must enumerate checks 1–5");
+});

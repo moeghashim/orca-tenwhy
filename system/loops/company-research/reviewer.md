@@ -23,7 +23,7 @@ Site URL: {{site_url}}
 
 ## Required output
 
-- The `notes` string **inside the JSON** must contain **five lines**, each starting with `1.` `2.` `3.` `4.` `5.` (one check per line). Each line states pass or fail and a one-sentence reason. On fail, quote the offending item (URL, product name, missing file). A summary such as "All five exit-gate checks pass." is not sufficient.
+- The `notes` string **inside the JSON** must contain **five lines**, each starting with `1.` `2.` `3.` `4.` `5.` (one check per line). Each line states pass or fail (`pass`, `fail`, `passes`, `fails`, `✓`, or `✕`) and a one-sentence reason with at least three non-URL words. A numbered line that is only a URL does not count. On fail, quote the offending item (URL, product name, missing file). A summary such as "All five exit-gate checks pass." is not sufficient. Notes must not start with `FORMAT:`.
 - Example `notes` value (literal newlines):
   `1. pass — RESEARCH.json matches the schema.`
   `2. pass — five competitors each have a 200 scrape URL.`

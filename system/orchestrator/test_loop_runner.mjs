@@ -46,7 +46,7 @@ function setup() {
 }
 
 function checkNotes(summary = "fixture") {
-  return [1, 2, 3, 4, 5].map((n) => `${n}. pass — ${summary}.`).join("\n");
+  return [1, 2, 3, 4, 5].map((n) => `${n}. pass — ${summary} notes look complete.`).join("\n");
 }
 
 function withResearchJson(label) {
