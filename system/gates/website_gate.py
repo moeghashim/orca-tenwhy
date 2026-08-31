@@ -171,14 +171,19 @@ def validate_package(pkg: dict) -> str | None:
         named = str(exc.path[-1]) if exc.path else "package.json"
         return f"package.json: {named}: {exc.message}"
     deps: dict = {}
+    has_vite = []
     for field in ("dependencies", "devDependencies"):
         block = pkg.get(field) or {}
         if not isinstance(block, dict):
             return f"package.json: {field}"
+        if "vite" in block:
+            has_vite.append(field)
+        extra = set(block) - {"vite"}
+        if extra:
+            return f"package.json: {next(iter(extra))}"
         deps.update(block)
-    if set(deps) != {"vite"}:
-        extra = set(deps) - {"vite"}
-        return f"package.json: {next(iter(extra or {'vite'}))}"
+    if len(has_vite) != 1 or set(deps) != {"vite"}:
+        return "package.json: vite"
     return None
 
 

@@ -140,6 +140,11 @@ class WebsiteGateTests(unittest.TestCase):
         _, checks, _ = run_case("fail_build_alias")
         self.assertIn("vite", checks[1]["detail"])
 
+    def test_fail_build_dup_dep(self):
+        self._assert_case("fail_build_dup_dep", 1, "build_ok")
+        _, checks, _ = run_case("fail_build_dup_dep")
+        self.assertIn("vite", checks[1]["detail"])
+
     def test_pass_multipage(self):
         rc, checks, workdir = run_case("pass_multipage")
         self.assertTrue(checks[1]["passed"], checks)
