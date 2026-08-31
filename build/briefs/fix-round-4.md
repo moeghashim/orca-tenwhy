@@ -1,0 +1,6 @@
+# Follow-up brief — round 4 (Codex `REVIEWED: P5 issues #r4`, `P6 issues #r4`, 2026-08-31) — commits `P5-fix4: …` / `P6-fix4: …`, each with a failing-then-passing test
+
+1. **Real read allowlist** (`system/gates/sandbox/build.sb:11`, `preview.sb:6`): remove `(allow file-read* (subpath "/"))` (and any other root-wide read grant). Reads allowed only for: the temp tree, the npm cache, the node binary's realpath + its Cellar/lib dir, `/usr/lib`, `/usr/share`, `/System/Library`, `/private/etc/localtime`, `/dev/null`, `/dev/urandom`, `/dev/tty`, plus `(allow file-read-metadata)`. Iterate until `pass` and `pass_multipage` still build. Extend `test_website_gate.py` (near line 147) to assert the generated profiles contain no `(subpath "/")` read grant and that a build-time `readFileSync("/etc/hosts")` / `/@fs/private/etc/passwd?raw` import fails under the build profile (not only under no-sandbox comparison).
+2. **Scrapes reconciled by id** (`dashboard/web/src/app.js:945`): the scrape-provenance list must key rows by `scrapes.id` (multiple rows for the same URL are distinct provenance events — e.g. a 200 and a later refusal). Test: two patches with the same URL and different ids → two rows, both retained in insertion order.
+
+Finish with `DONE fix4 <hash…>` — only hashes in `git log`.
