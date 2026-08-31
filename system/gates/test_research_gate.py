@@ -101,6 +101,15 @@ class ResearchGateTests(unittest.TestCase):
     def test_fail_sources(self):
         self._assert_case("fail_sources", 1, "sources_complete")
 
+    def test_fail_sources_multiset(self):
+        self._assert_case("fail_sources_multiset", 1, "sources_complete")
+        _, checks = run_case("fail_sources_multiset")
+        detail = next(c for c in checks if c["check_name"] == "sources_complete")["detail"]
+        self.assertIn("https://c1.example/", detail)
+        self.assertIn("200", detail)
+        self.assertIn("https://blocked.example/secret", detail)
+        self.assertIn("refused", detail)
+
     def test_fail_competitors_dup(self):
         self._assert_case("fail_competitors_dup", 1, "competitors≥5")
 
