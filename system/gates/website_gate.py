@@ -187,7 +187,7 @@ def validate_package(pkg: dict) -> str | None:
     return None
 
 
-def node_paths() -> tuple[str, str, str, str]:
+def node_paths() -> tuple[str, str, str, str, str]:
     node = shutil.which("node") or "/opt/homebrew/bin/node"
     try:
         real = str(Path(node).resolve())
@@ -196,7 +196,12 @@ def node_paths() -> tuple[str, str, str, str]:
     p = Path(real)
     prefix = str(p.parent.parent) if p.parent.name == "bin" else str(p.parent)
     lib = str(Path(prefix) / "lib")
-    return node, real, prefix, lib
+    brew = "/opt/homebrew"
+    for parent in p.parents:
+        if parent.name == "Cellar":
+            brew = str(parent.parent)
+            break
+    return node, real, prefix, lib, brew
 
 
 def darwin_user_temp() -> str:
@@ -221,7 +226,7 @@ def seatbelt_profile(
     template = SANDBOX_DIR / f"{phase}.sb"
     if not template.is_file():
         raise FileNotFoundError(f"sandbox profile missing: {template}")
-    node, node_real, node_prefix, node_lib = node_paths()
+    node, node_real, node_prefix, node_lib, brew_prefix = node_paths()
     tmp = tmpdir or (Path(home) / "tmp")
     text = template.read_text(encoding="utf-8")
     repl = {
@@ -233,6 +238,7 @@ def seatbelt_profile(
         "__NODE_REAL__": node_real,
         "__NODE_PREFIX__": node_prefix,
         "__NODE_LIB__": node_lib,
+        "__BREW_PREFIX__": brew_prefix,
         "__OPERATOR_HOME__": OPERATOR_HOME,
         "__USER_TEMP__": darwin_user_temp(),
         "__CRASHPAD__": CRASHPAD_DIR,

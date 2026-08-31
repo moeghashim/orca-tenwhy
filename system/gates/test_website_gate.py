@@ -140,15 +140,74 @@ class WebsiteGateTests(unittest.TestCase):
         _, checks, _ = run_case("fail_build_alias")
         self.assertIn("vite", checks[1]["detail"])
 
-    def test_build_preview_profiles_deny_etc_without_global_file_read(self):
+    def test_build_preview_profiles_are_a_real_read_allowlist(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import seatbelt_profile
+
         sandbox = GATE.parent / "sandbox"
         for name in ("build.sb", "preview.sb"):
             text = (sandbox / name).read_text(encoding="utf-8")
+            self.assertNotRegex(text, r'\(allow\s+file-read\*[^\n)]*\(subpath\s+"/"\)', name)
+            self.assertNotRegex(text, r'(?m)^\s*\(subpath\s+"/"\)\s*$', name)
             self.assertNotRegex(text, r"(?m)^\(allow file-read\*\)$", name)
-            self.assertIn("/private/etc/passwd", text)
-            self.assertIn("/etc/hosts", text)
+            self.assertIn('(literal "/")', text)
             self.assertIn("/usr/lib", text)
+            self.assertIn("/usr/share", text)
             self.assertIn("/System/Library", text)
+            self.assertIn("/private/etc/localtime", text)
+        tmp = Path(tempfile.mkdtemp())
+        home = tmp / "home"
+        tdir = tmp / "tmp"
+        home.mkdir()
+        tdir.mkdir()
+        try:
+            generated = seatbelt_profile("build", tmp, tmp / "cache", home, tmpdir=tdir)
+            self.assertNotRegex(generated, r'\(allow\s+file-read\*[^\n)]*\(subpath\s+"/"\)')
+            self.assertNotRegex(generated, r'(?m)^\s*\(subpath\s+"/"\)\s*$')
+            self.assertIn("/usr/lib", generated)
+            prof = tmp / "p.sb"
+            prof.write_text(generated, encoding="utf-8")
+            env = {**os.environ, "HOME": str(home), "TMPDIR": str(tdir)}
+            secret_paths = [
+                ("/etc/hosts", "hosts"),
+                ("/private/etc/passwd", "passwd"),
+            ]
+            gitconfig = Path.home() / ".gitconfig"
+            if gitconfig.is_file():
+                secret_paths.append((str(gitconfig), "gitconfig"))
+            for path, label in secret_paths:
+                probe = subprocess.run(
+                    [
+                        "/usr/bin/sandbox-exec",
+                        "-f",
+                        str(prof),
+                        "node",
+                        "-e",
+                        (
+                            "const fs=require('fs');const p="
+                            + repr(path)
+                            + ";try{fs.readFileSync(p,'utf8');console.log('LEAK')}"
+                            + "catch(e){console.log((e.code==='EPERM'||e.code==='EACCES')?'DENIED':e.code)}"
+                        ),
+                    ],
+                    cwd=str(tmp),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                self.assertIn("DENIED", probe.stdout, f"{label}: {probe.stdout} {probe.stderr}")
+                self.assertNotIn("LEAK", probe.stdout)
+            hello = subprocess.run(
+                ["/usr/bin/sandbox-exec", "-f", str(prof), "node", "-e", "console.log('ok')"],
+                cwd=str(tmp),
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(hello.returncode, 0, hello.stderr)
+            self.assertEqual(hello.stdout.strip(), "ok")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_fail_build_absolute_import(self):
         saved = {

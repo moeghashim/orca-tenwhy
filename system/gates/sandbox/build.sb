@@ -1,24 +1,13 @@
 (version 1)
-; Build phase: deny-default. A finite /usr+/System+/private read allowlist
-; SIGABRTs node on macOS firmlinks (dyld shared cache). (subpath "/") is the
-; only filter that maps the cache; it is not a filter-less (allow file-read*).
-; /etc and /private/etc are then denied except localtime so Vite cannot import
-; passwd/hosts. Operator $HOME is denied; the temp tree, npm cache, node
-; prefix, and tz files are re-allowed.
+; Build phase: deny-default with a real file-read allowlist.
+; (literal "/") is the root directory inode only — not descendants.
+; A root-wide subpath grant would cover the entire filesystem and is not used.
+; macOS dyld needs the root directory inode plus cryptex/shared-cache paths.
 (deny default)
 (allow file-read-metadata)
 (allow file-map-executable)
-(allow file-read* (subpath "/"))
-(deny file-read*
-  (subpath "__OPERATOR_HOME__")
-  (subpath "/etc")
-  (subpath "/private/etc")
-  (literal "/etc/hosts")
-  (literal "/private/etc/hosts")
-  (literal "/etc/passwd")
-  (literal "/private/etc/passwd")
-)
 (allow file-read*
+  (literal "/")
   (subpath "__TREE__")
   (subpath "__CACHE__")
   (subpath "__HOME__")
@@ -27,9 +16,13 @@
   (literal "__NODE_REAL__")
   (subpath "__NODE_PREFIX__")
   (subpath "__NODE_LIB__")
+  (subpath "__BREW_PREFIX__")
   (subpath "/usr/lib")
   (subpath "/usr/share")
   (subpath "/System/Library")
+  (subpath "/System/Volumes/Preboot/Cryptexes")
+  (subpath "/private/var/db/dyld")
+  (subpath "/Library/Apple")
   (literal "/Library/Preferences/.GlobalPreferences.plist")
   (literal "/private/etc/localtime")
   (literal "/etc/localtime")
