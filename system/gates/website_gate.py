@@ -526,7 +526,7 @@ def run_build(web: Path, loop_run_id: str) -> tuple[dict, BuildCtx]:
     if built.returncode != 0:
         err = (built.stderr or built.stdout or "").lower()
         if "sandbox" in err and "fail" in err:
-            return check("build_ok", False, "sandbox unavailable"), ctx
+            return check("build_ok", False, "sandbox unavailable: " + last_lines(built.stderr or built.stdout)), ctx
         return check("build_ok", False, last_lines(built.stderr or built.stdout)), ctx
     dist = tree / "dist"
     if not dist.is_dir():
@@ -907,6 +907,14 @@ def stop_pg(proc: subprocess.Popen) -> None:
             proc.kill()
 
 
+def chrome_launch_flags(user_data_dir: Path) -> str:
+    return (
+        f"--headless=new --no-sandbox --disable-gpu --disable-breakpad "
+        f"--user-data-dir={user_data_dir} "
+        '--host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"'
+    )
+
+
 def lighthouse_skip_honoured() -> bool:
     """Skip Lighthouse only when both the skip flag and TENWHY_DEV=1 are set."""
     return os.environ.get("WEBSITE_GATE_SKIP_LIGHTHOUSE") == "1" and os.environ.get("TENWHY_DEV") == "1"
@@ -923,10 +931,7 @@ def lighthouse_check(workdir: Path, ctx: BuildCtx) -> dict:
     chrome_dir = tree / "lhprofile"
     chrome_dir.mkdir(exist_ok=True)
     out_json = tree / "lh.json"
-    chrome_flags = (
-        f"--headless=new --no-sandbox --disable-gpu --disable-breakpad "
-        f"--user-data-dir={chrome_dir}"
-    )
+    chrome_flags = chrome_launch_flags(chrome_dir)
     preview_cmd = [
         "node",
         str(VITE_BIN),

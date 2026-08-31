@@ -352,6 +352,19 @@ class WebsiteGateTests(unittest.TestCase):
         checks = self._assert_case("fail_copy_substring", 1, "copy_grounded")
         self.assertIn("company.name", checks[3]["detail"])
 
+    def test_chrome_flags_pin_resolver_and_user_data_dir(self):
+        sys.path.insert(0, str(GATE.parent))
+        from website_gate import chrome_launch_flags
+
+        flags = chrome_launch_flags(Path("/private/tmp/tenwhy-lhprofile"))
+        self.assertIn("--headless=new", flags)
+        self.assertIn("--no-sandbox", flags)
+        self.assertIn("--disable-gpu", flags)
+        self.assertIn("--disable-breakpad", flags)
+        self.assertIn("--user-data-dir=/private/tmp/tenwhy-lhprofile", flags)
+        self.assertIn("MAP * ~NOTFOUND", flags)
+        self.assertIn("EXCLUDE 127.0.0.1", flags)
+
     def test_chrome_launch_failed_detail(self):
         sys.path.insert(0, str(GATE.parent))
         from website_gate import BuildCtx, lighthouse_check
