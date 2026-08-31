@@ -191,6 +191,7 @@ export function createDashboardServer({
           }
           const w = openWritable(dbPath);
           try {
+            w.exec("PRAGMA busy_timeout = 5000");
             w.exec("BEGIN IMMEDIATE");
             const eng = w.prepare("SELECT status FROM engagements WHERE id = ?").get(id);
             if (!eng || eng.status !== "awaiting_approval" || hasUnprocessedApproval(w, id)) {

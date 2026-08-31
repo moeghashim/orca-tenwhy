@@ -653,3 +653,59 @@ test("write endpoints reject missing Origin or wrong client header with 403", as
   assert.equal(n, 0);
   db.close();
 });
+
+test("concurrent double approve serialises to one 200 and one 409", async (t) => {
+  const { tmp, dbPath, id } = await awaitingEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const headers = writeHeaders(port);
+  const [a, b] = await Promise.all([
+    postJson(port, `/api/engagements/${id}/approve`, {}, headers),
+    postJson(port, `/api/engagements/${id}/approve`, {}, headers),
+  ]);
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [200, 409], { a, b });
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  const rows = db.prepare("SELECT * FROM approvals WHERE engagement_id = ?").all(id);
+  assert.equal(rows.length, 1);
+  db.close();
+});
+
+test("concurrent approve and request-changes serialises to one 200 and one 409", async (t) => {
+  const { tmp, dbPath, id } = await awaitingEngagement();
+  const { server, close } = createDashboardServer({ dbPath, repoRoot: tmp });
+  let closed = false;
+  const safeClose = () => {
+    if (closed) return;
+    closed = true;
+    close();
+  };
+  t.after(() => {
+    safeClose();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  const port = await listen(server);
+  const headers = writeHeaders(port);
+  const [a, r] = await Promise.all([
+    postJson(port, `/api/engagements/${id}/approve`, {}, headers),
+    postJson(port, `/api/engagements/${id}/request-changes`, { notes: "n" }, headers),
+  ]);
+  const statuses = [a.status, r.status].sort();
+  assert.deepEqual(statuses, [200, 409], { a, r });
+  safeClose();
+  const db = new DatabaseSync(dbPath);
+  const rows = db.prepare("SELECT * FROM approvals WHERE engagement_id = ?").all(id);
+  assert.equal(rows.length, 1);
+  db.close();
+});
