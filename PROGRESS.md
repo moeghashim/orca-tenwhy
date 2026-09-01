@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(none open — `REVIEWED: P7 ok #r17` closes the customer-step/dashboard-chain hotfixes `d2e5be8` `02febc7` from the myjam.co.uk live test; earlier: daemon lock `REVIEWED: P3 ok #r15`, gate hotfixes `REVIEWED: P5 ok #r12`. Second live engagement `eng_85db6740` (myjam.co.uk): research attempt 0 gate 3/5 (unverified product URLs, incomplete SOURCES.md) → retry attempt 1 gate **5/5** at 08:14Z.)_
+_(none open — `REVIEWED: P7 ok #r17` closes the customer-step/dashboard-chain hotfixes `d2e5be8` `02febc7` from the myjam.co.uk live test; earlier: daemon lock `REVIEWED: P3 ok #r15`, gate hotfixes `REVIEWED: P5 ok #r12`. Second live engagement `eng_85db6740` (myjam.co.uk): research attempt 0 gate 3/5 (unverified product URLs, incomplete SOURCES.md) → retry attempt 1 gate **5/5** at 08:14Z. Website `run_c970856b`: designer → build → reviewer `revise` at n=1 (real catch: Vite multi-page output) → `approve` at n=2 → gate **5/5** (Lighthouse 100/95 sandboxed) → `awaiting_approval` 08:29:31Z; preview 200; awaiting Moe's request-changes/approve in the customer UI.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
