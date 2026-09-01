@@ -26,14 +26,28 @@ function numberCell(value, { display } = {}) {
   };
 }
 
+export function safeHttpUrl(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol === "http:" || u.protocol === "https:") return s;
+  } catch {
+    /* not an absolute URL */
+  }
+  return null;
+}
+
 function uriCell(url) {
-  const data = url ? String(url) : "";
+  const safe = safeHttpUrl(url);
+  if (!safe) return textCell(url);
   return {
     kind: KIND.Uri,
     allowOverlay: false,
     readonly: true,
-    data,
-    displayData: data || "—",
+    data: safe,
+    displayData: safe,
   };
 }
 
