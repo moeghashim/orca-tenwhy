@@ -1,4 +1,4 @@
-.PHONY: verify verify-fast verify-gates-nosandbox vendor-tengrids
+.PHONY: verify verify-fast verify-gates-nosandbox vendor-tengrids grid-render-check
 
 TENGRIDS := dashboard/vendor/tengrids
 TENGRIDS_DIST := $(TENGRIDS)/packages/core/dist/esm/index.js
@@ -26,7 +26,7 @@ verify: vendor-tengrids
 	system/tools/.venv/bin/python -m unittest system/gates/test_research_gate.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_website_gate.py
 	node --import ./dashboard/web/jsx-register.mjs --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
-	npx vite build --config dashboard/web/vite.config.js
+	$(MAKE) grid-render-check
 
 # Same as verify, but skip website Lighthouse (gate check 5). The fail_lighthouse
 # fixture still runs under `make verify`.
@@ -37,7 +37,14 @@ verify-fast: vendor-tengrids
 	system/tools/.venv/bin/python -m unittest system/gates/test_research_gate.py
 	WEBSITE_GATE_SKIP_LIGHTHOUSE=1 TENWHY_DEV=1 system/tools/.venv/bin/python -m unittest system/gates/test_website_gate.py
 	node --import ./dashboard/web/jsx-register.mjs --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
+	$(MAKE) grid-render-check
+
+# Headless Chrome proof that the research grid paints. vite-builds the
+# render-check fixture (not linked from production nav), serves dist/ on a
+# free localhost port, then probes canvases via cdp_render.mjs.
+grid-render-check:
 	npx vite build --config dashboard/web/vite.config.js
+	node dashboard/tools/grid_render_check.mjs
 
 # Codex cannot run sandbox-exec. Dev-only: TENWHY_GATE_NO_SANDBOX is ignored
 # unless TENWHY_DEV=1. Orchestrator acceptance remains sandboxed `make verify`.

@@ -24,6 +24,7 @@ export default defineConfig({
         main: path.join(dir, "index.html"),
         customer: path.join(dir, "customer.html"),
         graph: path.join(dir, "graph.html"),
+        "render-check": path.join(dir, "render-check.html"),
       },
     },
   },

@@ -35,7 +35,7 @@ Verified values: `system/config/environment.md`. Loop caps and wiring: `system/c
 
 ## Verify
 
-Requires Node ≥ 20, the `sqlite3` CLI, and (for the research grid) bash ≥ 4 plus `jq` to build the `dashboard/vendor/tengrids` submodule. `make verify` runs `make vendor-tengrids` first; that target is a no-op when `packages/core/dist/esm/index.js` is already newer than the submodule HEAD commit.
+Requires Node ≥ 20, the `sqlite3` CLI, Google Chrome (headless CDP render check), and (for the research grid) bash ≥ 4 plus `jq` to build the `dashboard/vendor/tengrids` submodule. `make verify` runs `make vendor-tengrids` first; that target is a no-op when `packages/core/dist/esm/index.js` is already newer than the submodule HEAD commit. After the dashboard `vite build`, `make grid-render-check` serves `dashboard/web/dist` on a free localhost port and opens `render-check.html` in headless Chrome (`dashboard/tools/cdp_render.mjs`) to confirm the grid paints at least one canvas.
 
 ```bash
 make verify
