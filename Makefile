@@ -22,7 +22,7 @@ vendor-tengrids:
 	    PATH="/opt/homebrew/bin:$$PATH" npm ci && \
 	    PATH="/opt/homebrew/bin:$$PATH" npm run build -w packages/core; \
 	fi
-	@rm -rf dashboard/vendor/tengrids/node_modules/react dashboard/vendor/tengrids/node_modules/react-dom
+	node dashboard/tools/dedupe_react.mjs
 
 # Runs every test that exists so far. Must exit 0.
 verify: vendor-tengrids
