@@ -28,7 +28,21 @@ const chrome = spawn(
   { stdio: "ignore" },
 );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const cleanup = () => { try { chrome.kill(); } catch {} try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} };
+// Kill Chrome, wait for it to actually exit (it keeps writing to the profile while shutting down),
+// then remove the profile — retrying, because rmSync races a still-closing process (Codex #r19).
+async function cleanup() {
+  await new Promise((resolve) => {
+    if (chrome.exitCode !== null || chrome.signalCode) return resolve();
+    const t = setTimeout(resolve, 3000);
+    chrome.once("exit", () => { clearTimeout(t); resolve(); });
+    try { chrome.kill(); } catch { clearTimeout(t); resolve(); }
+  });
+  for (let i = 0; i < 10; i++) {
+    try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
+    if (!fs.existsSync(profile)) return;
+    await sleep(150);
+  }
+}
 try {
   // Chrome picks a free port (--remote-debugging-port=0) and writes it to DevToolsActivePort in the
   // profile dir — no guessing an unreserved port (Codex #r19).
@@ -74,5 +88,5 @@ try {
   console.error(`render check: ${err?.stack || err}`);
   process.exitCode = 1;
 } finally {
-  cleanup(); // always runs: Chrome killed, profile removed, whatever the probe outcome (Codex #r19)
+  await cleanup(); // always runs: Chrome killed, profile removed, whatever the probe outcome (Codex #r19)
 }
