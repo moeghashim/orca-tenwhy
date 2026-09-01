@@ -1,4 +1,5 @@
 import { renderComparison } from "../app.js";
+import { attachResearchGrid, unmountResearchGrid } from "../research-grid/mount.js";
 import { loadingProgress, PHASES, STEP_LABELS } from "./progress.js";
 
 function el(tag, attrs = {}, ...kids) {
@@ -127,21 +128,6 @@ export function renderLoading({
   );
 }
 
-function hostOf(url) {
-  try {
-    return new URL(url).host;
-  } catch {
-    return String(url || "").replace(/^https?:\/\//, "");
-  }
-}
-
-function pricingShown(comp) {
-  const products = comp.products || [];
-  const priced = products.filter((p) => typeof p.price === "number");
-  if (priced.length) return String(priced[0].price);
-  return "hidden";
-}
-
 export function renderResults({
   engagement,
   research,
@@ -176,18 +162,8 @@ export function renderResults({
       el("div", { class: "r-h" }, "How your site will win"),
       el("div", { class: "r-list", "data-card": "win" }, ...ideas.map((it, i) => el("span", {}, `${i + 1}. ${it.idea}`))),
     );
-    const table = el("div", { class: "comp-table", "data-card": "competitors" });
-    for (const h of ["competitor", "pricing shown", "what they do well", "website"]) table.append(el("span", { class: "h" }, h));
-    for (const c of competitors) {
-      const href = c.url || "";
-      table.append(
-        href ? el("a", { href, class: "mono" }, `${c.name} ↗`) : el("span", { style: { fontWeight: "500" } }, c.name || ""),
-        el("span", {}, pricingShown(c)),
-        el("span", {}, c.summary || ""),
-        el("span", {}, hostOf(href)),
-      );
-    }
-    const wrap = el("div", { class: "research", "data-tab": "research" }, about, el("div", { class: "r-grid" }, learn, win), el("div", { class: "r-card" }, el("div", { class: "r-h" }, "Your competitors"), table));
+    const gridHost = el("div", { class: "research-grid-host", "data-card": "research-grid" });
+    const wrap = el("div", { class: "research", "data-tab": "research" }, about, el("div", { class: "r-grid" }, learn, win), el("div", { class: "r-card" }, el("div", { class: "r-h" }, "Your competitors"), gridHost));
     if (comparison) wrap.append(renderComparison(comparison));
     body.push(wrap);
   } else {
@@ -275,9 +251,12 @@ export function renderCustomerApp(root, {
   staleWebsiteRunIds,
 } = {}) {
   const route = parseCustomerHash(hash);
+  root.querySelectorAll("[data-card='research-grid']").forEach(unmountResearchGrid);
   root.replaceChildren();
   if (route.view === "results") {
     root.append(renderResults({ engagement, research, comparison, pages, tab, onTab, onApprove, onRequest, busy, error, liveUrl, launching, showNotes }));
+    const host = root.querySelector("[data-card='research-grid']");
+    if (host && research) attachResearchGrid(host, { research, comparison, variant: "customer" });
     return root;
   }
   if (route.view === "loading" || (route.view === "start" && engagement)) {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import { parseCustomerHash, renderCustomerApp } from "./src/customer/app.js";
 import { deriveStaleWebsiteRunIds, loadingProgress } from "./src/customer/progress.js";
+import { installGridTestStubs } from "./src/research-grid/canvas-stub.js";
 import { createCustomerSession } from "./src/customer/session.js";
 
 function fixtureEvents() {
@@ -76,9 +77,12 @@ test("research iterations, a failed research gate and an orchestrator retry keep
 });
 
 test("start and loading markup include mascot and five steps", () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   renderCustomerApp(root, { hash: "#/", onCreate() {} });
   assert.ok(root.querySelector("[data-mascot]"));
@@ -103,9 +107,12 @@ test("start and loading markup include mascot and five steps", () => {
 });
 
 test("results tabs render research, website preview, and both action controls", () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   const research = {
     company: { summary: "Neighborhood cafe" },
@@ -125,7 +132,7 @@ test("results tabs render research, website preview, and both action controls", 
     tab: "research",
   });
   assert.match(root.textContent, /Neighborhood cafe/);
-  assert.match(root.textContent, /Nord Kaffe/);
+  assert.equal(root.querySelectorAll("[data-card='research-grid']").length, 1);
   assert.ok(root.querySelector("[data-approve]"));
   assert.ok(root.querySelector("[data-request]"));
   assert.equal(root.querySelector("[data-approve]").textContent, "Approve & launch");
@@ -147,9 +154,12 @@ test("results tabs render research, website preview, and both action controls", 
 });
 
 test("results launching, 409 copy, and rebuilding loading copy", () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   renderCustomerApp(root, {
     hash: "#/e/eng_0143/results",
@@ -202,9 +212,12 @@ function jsonRes(body, ok = true, status = 200) {
 }
 
 test("loading EventSource patches advance steps and navigate on awaiting_approval", async () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   let hash = "#/e/eng_x";
   const loop_runs = [
@@ -259,9 +272,12 @@ test("loading EventSource patches advance steps and navigate on awaiting_approva
 });
 
 test("direct results route fetches research and preview-manifest before render", async () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   let hash = "#/e/eng_0143/results";
   const fetched = [];
@@ -308,7 +324,7 @@ test("direct results route fetches research and preview-manifest before render",
   assert.ok(fetched.some((u) => u.includes("/api/engagements/eng_0143/research")));
   assert.ok(fetched.some((u) => u.includes("/preview-manifest")));
   assert.match(root.textContent, /Neighborhood cafe/);
-  assert.match(root.textContent, /Harbor & Finch|Nord/);
+  assert.equal(root.querySelectorAll("[data-card='research-grid']").length, 1);
   assert.ok(root.querySelector("[data-approve]"));
   session.state.tab = "design";
   hash = "#/e/eng_0143/results";
@@ -325,9 +341,12 @@ test("direct results route fetches research and preview-manifest before render",
 });
 
 test("awaiting_approval SSE patch loads research before rendering results", async () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   let hash = "#/e/eng_x";
   const calls = [];
@@ -403,9 +422,12 @@ test("awaiting_approval SSE patch loads research before rendering results", asyn
 });
 
 test("request-changes clears website step events until the new run's gate passes", async () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   let hash = "#/e/eng_x/results";
   const loop_runs = [
@@ -480,9 +502,12 @@ test("request-changes clears website step events until the new run's gate passes
 });
 
 test("reload mid-rebuild does not mark step 5 done until the new website run's gate passes", async () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   let hash = "#/e/eng_x";
   const loop_runs = [
@@ -606,9 +631,12 @@ test("retry website run after a change-request is live and advances steps", () =
 });
 
 test("approve and request-changes treat only 2xx as success", async () => {
-  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div>", { url: "http://127.0.0.1:4310/customer.html" });
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/customer.html" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  installGridTestStubs();
   const root = document.getElementById("app");
   let hash = "#/e/eng_x/results";
   let next = { status: 200, ok: true, body: { ok: true, id: "apr_x" } };

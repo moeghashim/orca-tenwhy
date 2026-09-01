@@ -1,5 +1,41 @@
+import { attachResearchGrid, unmountResearchGrid } from "./research-grid/mount.js";
 import { applyStatusVars, statusOf, tokens } from "./status.js";
 import { clockTime, isRecent, rel, serverNow } from "./time.js";
+
+const researchByRun = new Map();
+
+function destroyResearchGrids(node) {
+  if (!node?.querySelectorAll) return;
+  node.querySelectorAll("[data-research-grid]").forEach(unmountResearchGrid);
+}
+
+function scheduleResearchGrid(shell, engId, runId, comparison) {
+  const host = shell?.querySelector("[data-research-grid]");
+  if (!host || !engId || !runId) return;
+  const cached = researchByRun.get(runId);
+  if (cached) {
+    attachResearchGrid(host, {
+      research: cached.research,
+      comparison: comparison || cached.comparison,
+      variant: "dashboard",
+    });
+    return;
+  }
+  if (typeof globalThis.fetch !== "function") return;
+  fetch(`/api/engagements/${encodeURIComponent(engId)}/research`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data?.research) return;
+      researchByRun.set(runId, { research: data.research, comparison: data.comparison });
+      if (!host.isConnected) return;
+      attachResearchGrid(host, {
+        research: data.research,
+        comparison: comparison || data.comparison,
+        variant: "dashboard",
+      });
+    })
+    .catch(() => {});
+}
 
 const ROW_H = `${tokens.space.tableRowHeight}px`;
 const FLASH = tokens.color.liveFlash;
@@ -612,6 +648,14 @@ function renderLoop(store, route, now, go) {
     return r && r.engagement_id === eng.id && r.loop_name === "company-research";
   });
   if (run.loop_name === "company-research") {
+    kids.push(
+      el(
+        "div",
+        { class: "card", "data-research-grid-card": "1" },
+        el("div", { class: "card-h" }, "research grid"),
+        el("div", { "data-research-grid": "1" }),
+      ),
+    );
     if (snap.comparisons?.[run.id]) {
       kids.push(renderComparison(snap.comparisons[run.id]));
     } else if (latest && latest !== run.id) {
@@ -991,6 +1035,7 @@ function syncLoop(shell, route, store, now) {
       if (superseded) superseded.textContent = msg;
       else main.append(el("div", { class: "card cmp-superseded", "data-cmp-superseded": "1" }, msg));
     }
+    scheduleResearchGrid(shell, eng.id, run.id, snap.comparisons?.[run.id]);
   }
   return true;
 }
@@ -1028,6 +1073,7 @@ export function renderApp(root, { store, hash, now, go = (h) => { window.locatio
       }
     }
   }
+  destroyResearchGrids(root);
   root.replaceChildren();
   const snap = store.snapshot;
   const sse = store.sse;
@@ -1134,5 +1180,11 @@ export function renderApp(root, { store, hash, now, go = (h) => { window.locatio
   main.append(content);
   shell.append(side, main);
   root.append(shell);
+  if (route.view === "loop") {
+    const run = snap?.loop_runs?.find((r) => r.id === route.runId);
+    if (run?.loop_name === "company-research") {
+      scheduleResearchGrid(shell, route.engId, route.runId, snap?.comparisons?.[run.id]);
+    }
+  }
   return root;
 }
