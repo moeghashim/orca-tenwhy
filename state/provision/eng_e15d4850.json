@@ -28,7 +28,7 @@
     "SITE_PLAN_SERVICE_ID",
     "SITE_WORKERS_DEV_SUBDOMAIN"
   ],
-  "env_file": "/private/tmp/claude-501/-Users-moeghashim-orca-projects-orca-tenwhy/496176e9-b02b-453e-94e3-42c8e857d376/scratchpad/wt-live/state/provision/eng_e15d4850/.env",
-  "workspace": "/private/tmp/claude-501/-Users-moeghashim-orca-projects-orca-tenwhy/496176e9-b02b-453e-94e3-42c8e857d376/scratchpad/wt-live/state/provision/eng_e15d4850",
+  "env_file": "/Users/moeghashim/orca/projects/orca-tenwhy/state/provision/eng_e15d4850/.env",
+  "workspace": "/Users/moeghashim/orca/projects/orca-tenwhy/state/provision/eng_e15d4850",
   "created_at": "2026-09-01T07:33:51Z"
 }

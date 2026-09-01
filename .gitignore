@@ -28,3 +28,6 @@ system/tools/.venv/
 *.tar.gz
 __pycache__/
 *.pyc
+state/daemon.lock
+state/daemon.lock.migrate
+state/logs/
