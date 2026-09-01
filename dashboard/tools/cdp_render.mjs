@@ -15,26 +15,36 @@ import path from "node:path";
 const CHROME = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const [url, out, waitArg, minArg, sizeArg] = process.argv.slice(2);
 if (!url || !out) {
-  console.error("usage: cdp_render.mjs <url> <out.png> [waitMs] [minCanvases]");
-  process.exit(2);
+  console.error("usage: cdp_render.mjs <url> <out.png> [waitMs] [minCanvases] [windowSize]");
+  process.exit(2); // before Chrome is launched: nothing to clean up
 }
 const waitMs = Number(waitArg || 3500);
 const minCanvases = Number(minArg || 1);
 const windowSize = /^\d+,\d+$/.test(sizeArg || "") ? sizeArg : "1200,900";
-const port = 9300 + Math.floor(Math.random() * 500);
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "cdp-render-"));
 const chrome = spawn(
   CHROME,
-  ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${port}`, `--window-size=${windowSize}`, `--user-data-dir=${profile}`, "about:blank"],
+  ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--remote-debugging-port=0", `--window-size=${windowSize}`, `--user-data-dir=${profile}`, "about:blank"],
   { stdio: "ignore" },
 );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cleanup = () => { try { chrome.kill(); } catch {} try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} };
 try {
-  let targets = null;
-  for (let i = 0; i < 60 && !targets; i++) {
+  // Chrome picks a free port (--remote-debugging-port=0) and writes it to DevToolsActivePort in the
+  // profile dir — no guessing an unreserved port (Codex #r19).
+  let port = null;
+  const activePortFile = path.join(profile, "DevToolsActivePort");
+  for (let i = 0; i < 80 && !port; i++) {
     await sleep(250);
-    try { targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch {}
+    try {
+      const first = fs.readFileSync(activePortFile, "utf8").split("\n")[0].trim();
+      if (/^\d+$/.test(first)) port = Number(first);
+    } catch {}
+  }
+  if (!port) throw new Error("chrome did not write DevToolsActivePort");
+  let targets = null;
+  for (let i = 0; i < 40 && !targets; i++) {
+    try { targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { await sleep(250); }
   }
   if (!targets) throw new Error("chrome did not expose a debugging target");
   const page = targets.find((t) => t.type === "page");
@@ -58,8 +68,11 @@ try {
   ws.close();
   console.log(JSON.stringify({ url, ...dom, screenshot: out }));
   const clean = !dom.err || dom.err === "no-error-yet";
-  if (!clean) { console.error(`render check: page error: ${dom.err}`); process.exit(1); }
-  if (dom.canvases < minCanvases) { console.error(`render check: expected >= ${minCanvases} canvas, found ${dom.canvases}`); process.exit(1); }
+  if (!clean) { console.error(`render check: page error: ${dom.err}`); process.exitCode = 1; }
+  else if (dom.canvases < minCanvases) { console.error(`render check: expected >= ${minCanvases} canvas, found ${dom.canvases}`); process.exitCode = 1; }
+} catch (err) {
+  console.error(`render check: ${err?.stack || err}`);
+  process.exitCode = 1;
 } finally {
-  cleanup();
+  cleanup(); // always runs: Chrome killed, profile removed, whatever the probe outcome (Codex #r19)
 }
