@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(open: `REVIEWED: P11 issues #r22` — `dedupe_react.mjs:35` lexical containment could follow a symlinked `node_modules` parent and delete an outside React dir from `postinstall` → `build/briefs/P11-fix-5.md` (refuse symlinked segments, realpath containment, regression tests; Grok in progress). #r21 closed by `07856c9`; #r20 by `bedb1fd`; #r19 by `cbe19bf` + orchestrator cdp_render fixes. Earlier rounds all ok.)_
+_(none open — P11 research grid (tengrids): `REVIEWED: P11 ok #r23` after rounds #r19–#r22 (URI schemes `cbe19bf`; cdp_render port/cleanup `97fdb51` `634405b`; no JSX loader `bedb1fd`; one React for Node `07856c9`; symlink-safe dedupe `8cac2ad`). Earlier: #r18 dashboard page, #r17 customer steps, #r15 daemon lock, #r12 gates — all ok. Final isolated `make verify` @8cac2ad pending → then P11 rows ✅.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
