@@ -161,6 +161,12 @@ P7-fix4 (Codex `P7 issues #r3b`): `node --test "dashboard/server/*.test.mjs" das
 
 P7-fix4 item 10 (Codex `P7 issues #r4`): `node --test "dashboard/server/*.test.mjs" dashboard/web/customer.test.mjs` → `✔ retry website run after a change-request is live and advances steps` `tests 26` `pass 26` `fail 0` `exit=0`. Stale = started_at/first event before the latest `engagement.change_requested` / `approval.processed(request_changes)` cutoff; attempt 1 retries stay live. `_pending_`
 
+## Phase 11 — Research grid (tengrids)
+
+| ID | Status | Verify command → pasted output | Commit | Review |
+|---|---|---|---|---|
+| P11 | 🟡 | `make verify; echo make_exit=$?` → `vendor-tengrids: dist up to date, skip` · schema PASS 1–7 · scrape `Ran 11 tests` `OK` · research_gate `Ran 12 tests` `OK` · website_gate `Ran 38 tests` `OK` · `node --test` `ℹ tests 145` `ℹ pass 145` `ℹ fail 0` · `npx vite build` `✓ 295 modules transformed` `✓ built in 128ms` · `make_exit=0`. `node --import ./dashboard/web/jsx-register.mjs --test dashboard/web/model.test.mjs dashboard/web/mount.test.mjs` → `✔ researchToGridModel builds three tabs from the myjam-shaped fixture` · `✔ mountResearchGrid renders one root, update keeps it, unmount removes it` · `✔ customer results mounts exactly one grid; re-render does not create a second #portal`. | `893f2b6` `c0d79cb` `9e15a1a` | `_pending_` |
+
 ## Final acceptance (§12)
 
 | Item | Status | Evidence |
