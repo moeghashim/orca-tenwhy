@@ -1,5 +1,6 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
+@import "@glideapps/glide-data-grid/dist/index.css";
 
 @keyframes twFloat { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
 @keyframes twBlink { 0%, 92%, 100% { transform: scaleY(1) } 95% { transform: scaleY(0.1) } }

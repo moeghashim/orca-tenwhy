@@ -1,8 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createElement } from "react";
-import { ResearchGrid } from "./ResearchGrid.jsx";
-import "@glideapps/glide-data-grid/dist/index.css";
+import { ResearchGrid } from "./ResearchGrid.js";
 
 export function mountResearchGrid(el, { research, comparison, variant, initialTab } = {}) {
   if (!el) throw new Error("mountResearchGrid requires an element");

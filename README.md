@@ -41,4 +41,4 @@ Requires Node ≥ 20, the `sqlite3` CLI, Google Chrome (headless CDP render chec
 make verify
 ```
 
-`make verify` runs every test that exists so far and must exit 0.
+`make verify` runs every test that exists so far and must exit 0. Dashboard tests are plain `node --test` (no JSX loader).

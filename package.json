@@ -23,8 +23,6 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.0.0",
-    "esbuild": "^0.27.0",
     "jsdom": "^30.0.1",
     "vite": "^8.2.2"
   }

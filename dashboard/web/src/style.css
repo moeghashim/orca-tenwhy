@@ -1,5 +1,6 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
+@import "@glideapps/glide-data-grid/dist/index.css";
 
 :root {
   --canvas: #f4f4f5;

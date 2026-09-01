@@ -1,5 +1,5 @@
 import { DataEditor, GridCellKind } from "@glideapps/glide-data-grid";
-import { useCallback, useMemo, useState } from "react";
+import { createElement as h, useCallback, useMemo, useState } from "react";
 import { KIND, researchToGridModel } from "./model.js";
 import { GRID_ROW_HEIGHT, gridHeight, gridTheme, gridWidth } from "./theme.js";
 
@@ -27,44 +27,46 @@ export function ResearchGrid({ research, comparison, variant = "customer", initi
   const width = gridWidth(columns);
   const height = gridHeight(rows.length);
   const theme = useMemo(() => gridTheme(), []);
-  return (
-    <div className="research-grid" data-variant={variant} data-active-tab={tab?.id || ""}>
-      <div className="pills research-grid-tabs" data-grid-tabs="1">
-        {model.tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={"pill" + (t.id === tab.id ? " on" : "")}
-            data-grid-tab={t.id}
-            onClick={() => setTabId(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div hidden data-grid-model-cols="1">
-        {columns.map((c, i) => (
-          <span key={`${c.title}:${i}`} data-grid-col={c.title}>
-            {c.title}
-          </span>
-        ))}
-      </div>
-      <DataEditor
-        columns={columns}
-        rows={rows.length}
-        getCellContent={getCellContent}
-        width={width}
-        height={height}
-        rowHeight={GRID_ROW_HEIGHT}
-        headerHeight={GRID_ROW_HEIGHT}
-        theme={theme}
-        smoothScrollX
-        smoothScrollY
-        getCellsForSelection
-        columnSelect="none"
-        rowSelect="none"
-        rangeSelect="none"
-      />
-    </div>
+  return h(
+    "div",
+    { className: "research-grid", "data-variant": variant, "data-active-tab": tab?.id || "" },
+    h(
+      "div",
+      { className: "pills research-grid-tabs", "data-grid-tabs": "1" },
+      ...model.tabs.map((t) =>
+        h(
+          "button",
+          {
+            key: t.id,
+            type: "button",
+            className: "pill" + (t.id === tab.id ? " on" : ""),
+            "data-grid-tab": t.id,
+            onClick: () => setTabId(t.id),
+          },
+          t.label,
+        ),
+      ),
+    ),
+    h(
+      "div",
+      { hidden: true, "data-grid-model-cols": "1" },
+      ...columns.map((c, i) => h("span", { key: `${c.title}:${i}`, "data-grid-col": c.title }, c.title)),
+    ),
+    h(DataEditor, {
+      columns,
+      rows: rows.length,
+      getCellContent,
+      width,
+      height,
+      rowHeight: GRID_ROW_HEIGHT,
+      headerHeight: GRID_ROW_HEIGHT,
+      theme,
+      smoothScrollX: true,
+      smoothScrollY: true,
+      getCellsForSelection: true,
+      columnSelect: "none",
+      rowSelect: "none",
+      rangeSelect: "none",
+    }),
   );
 }

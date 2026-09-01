@@ -11,11 +11,18 @@ vendor-tengrids:
 	if [ -f "$$dist" ]; then \
 	  commit_ts=$$(git -C dashboard/vendor/tengrids log -1 --format=%ct); \
 	  dist_ts=$$(stat -f %m "$$dist" 2>/dev/null || stat -c %Y "$$dist"); \
-	  if [ "$$dist_ts" -ge "$$commit_ts" ]; then echo "vendor-tengrids: dist up to date, skip"; exit 0; fi; \
-	fi; \
-	cd dashboard/vendor/tengrids && \
-	  PATH="/opt/homebrew/bin:$$PATH" npm ci && \
-	  PATH="/opt/homebrew/bin:$$PATH" npm run build -w packages/core
+	  if [ "$$dist_ts" -ge "$$commit_ts" ]; then echo "vendor-tengrids: dist up to date, skip"; \
+	  else \
+	    cd dashboard/vendor/tengrids && \
+	      PATH="/opt/homebrew/bin:$$PATH" npm ci && \
+	      PATH="/opt/homebrew/bin:$$PATH" npm run build -w packages/core; \
+	  fi; \
+	else \
+	  cd dashboard/vendor/tengrids && \
+	    PATH="/opt/homebrew/bin:$$PATH" npm ci && \
+	    PATH="/opt/homebrew/bin:$$PATH" npm run build -w packages/core; \
+	fi
+	@rm -rf dashboard/vendor/tengrids/node_modules/react dashboard/vendor/tengrids/node_modules/react-dom
 
 # Runs every test that exists so far. Must exit 0.
 verify: vendor-tengrids
@@ -25,7 +32,7 @@ verify: vendor-tengrids
 	system/tools/.venv/bin/python system/tools/test_scrape.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_research_gate.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_website_gate.py
-	node --import ./dashboard/web/jsx-register.mjs --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
+	node --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
 	$(MAKE) grid-render-check
 
 # Same as verify, but skip website Lighthouse (gate check 5). The fail_lighthouse
@@ -36,7 +43,7 @@ verify-fast: vendor-tengrids
 	system/tools/.venv/bin/python system/tools/test_scrape.py
 	system/tools/.venv/bin/python -m unittest system/gates/test_research_gate.py
 	WEBSITE_GATE_SKIP_LIGHTHOUSE=1 TENWHY_DEV=1 system/tools/.venv/bin/python -m unittest system/gates/test_website_gate.py
-	node --import ./dashboard/web/jsx-register.mjs --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
+	node --test "system/orchestrator/test_*.mjs" "system/loops/*/test_*.mjs" "dashboard/server/*.test.mjs" "dashboard/web/*.test.mjs"
 	$(MAKE) grid-render-check
 
 # Headless Chrome proof that the research grid paints. vite-builds the
