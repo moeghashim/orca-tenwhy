@@ -95,6 +95,23 @@ function runsFor(snap, engId) {
   return (snap.loop_runs || []).filter((r) => r.engagement_id === engId);
 }
 
+/** Latest run of a loop for an engagement (highest attempt, then most recent) — the chain chip must
+ *  reflect the current retry, not attempt 0. */
+function latestRunFor(snap, engId, loopName) {
+  let best = null;
+  for (const r of runsFor(snap, engId)) {
+    if (r.loop_name !== loopName) continue;
+    if (!best) {
+      best = r;
+      continue;
+    }
+    const a = Number(r.attempt) || 0;
+    const b = Number(best.attempt) || 0;
+    if (a > b || (a === b && String(r.started_at || r.created_at || "") >= String(best.started_at || best.created_at || ""))) best = r;
+  }
+  return best;
+}
+
 function activeRun(snap, eng) {
   const runs = runsFor(snap, eng.id);
   return (
@@ -422,7 +439,7 @@ function fillPipeChip(chip, lr, active) {
   const state = chip.querySelector("[data-pipe-state]");
   if (state) {
     state.style.color = ps.fg;
-    state.textContent = `${ps.glyph} ${lr?.status || "queued"}`;
+    state.textContent = `${ps.glyph} ${lr?.status || "not started"}`;
   }
   let mark = chip.querySelector("[data-pipe-active]");
   if (active && !mark) chip.append(el("span", { class: "faint", "data-pipe-active": "1" }, "active"));
@@ -440,7 +457,7 @@ function makePipeChip(seq, name, lr, active) {
     },
     el("span", { class: "faint" }, seq),
     el("span", { class: "mono" }, name),
-    el("span", { "data-pipe-state": "1", style: { color: ps.fg } }, `${ps.glyph} ${lr?.status || "queued"}`),
+    el("span", { "data-pipe-state": "1", style: { color: ps.fg } }, `${ps.glyph} ${lr?.status || "not started"}`),
     active ? el("span", { class: "faint", "data-pipe-active": "1" }, "active") : null,
   );
 }
@@ -566,7 +583,7 @@ function renderLoop(store, route, now, go) {
     ["01", "company-research"],
     ["02", "website"],
   ]) {
-    const lr = runsFor(snap, eng.id).find((r) => r.loop_name === name);
+    const lr = latestRunFor(snap, eng.id, name);
     pipe.append(makePipeChip(seq, name, lr, run.loop_name === name));
     if (seq === "01") pipe.append(el("span", { class: "faint" }, "→"));
   }
@@ -877,7 +894,7 @@ function syncLoop(shell, route, store, now) {
     for (const name of ["company-research", "website"]) {
       const chip = pipe.querySelector(`[data-pipe="${name}"]`);
       if (!chip) continue;
-      const lr = runsFor(snap, eng.id).find((r) => r.loop_name === name);
+      const lr = latestRunFor(snap, eng.id, name);
       fillPipeChip(chip, lr, run.loop_name === name);
     }
   }

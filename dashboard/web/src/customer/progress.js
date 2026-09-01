@@ -84,23 +84,29 @@ export function loadingProgress({ events = [], loop_runs = [], approvals = [], s
   const runsById = new Map((loop_runs || []).map((r) => [r.id, r]));
   const list = (events || []).filter((e) => !(e.loop_run_id && stale.has(e.loop_run_id)));
   let completed = 0;
-  if (list.some((e) => e.kind === "loop_run.started" && loopNameOf(e, runsById) === "company-research")) {
-    completed = 1;
+  const isLoop = (e, name) => loopNameOf(e, runsById) === name;
+  // Step semantics (index → label): 0 reading, 1 researching, 2 planning, 3 building, 4 final checks.
+  // A step is "done" only on the structural signal that ends it — never on an intermediate
+  // iteration, so a failed gate + orchestrator retry keeps the customer on the same step.
+  if (list.some((e) => e.kind === "loop_run.started" && isLoop(e, "company-research"))) {
+    completed = 1; // reading done → researching active
   }
-  if (list.some((e) => e.kind === "iteration.recorded" && loopNameOf(e, runsById) === "company-research")) {
-    completed = 2;
-  }
-  const researchPlanned = list.some((e) => {
+  const researchPassed = list.some((e) => {
     if (e.kind === "handoff") return true;
-    return e.kind === "gate.checked" && loopNameOf(e, runsById) === "company-research" && payloadPassed(e.payload);
+    return e.kind === "gate.checked" && isLoop(e, "company-research") && payloadPassed(e.payload);
   });
-  if (researchPlanned) completed = 3;
-  if (list.some((e) => e.kind === "iteration.recorded" && loopNameOf(e, runsById) === "website")) {
-    completed = 4;
-  }
+  if (researchPassed) completed = 2; // researching done → planning (designer) active
+  const planned = list.some(
+    (e) => (e.kind === "loop_run.prepared" || e.kind === "iteration.recorded") && isLoop(e, "website"),
+  );
+  if (researchPassed && planned) completed = 3; // planning done → building active
+  const reviewerApproved = list.some(
+    (e) => e.kind === "iteration.recorded" && isLoop(e, "website") && String(e.payload?.verdict || "") === "approve",
+  );
   const webChecks = list.filter((e) => e.kind === "gate.checked" && loopNameOf(e, runsById) === "website");
   const webPass = webChecks.some((e) => payloadPassed(e.payload));
   const webFail = webChecks.length > 0 && !webPass;
+  if (researchPassed && planned && (reviewerApproved || webChecks.length > 0)) completed = 4; // building done → final checks active
   if (webPass) completed = 5;
   return {
     completed,

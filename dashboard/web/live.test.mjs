@@ -588,3 +588,33 @@ test("SSE-kill test → red banner + snapshot label", () => {
   assert.match(banner.textContent, /snapshot/);
   assert.equal(store.sse.state, "disconnected");
 });
+
+test("loop chain shows the latest attempt per loop and 'not started' for loops without a run (live myjam.co.uk shape)", () => {
+  const snap = {
+    serverTime: "2026-09-01T08:05:00Z",
+    snapshotAt: "2026-09-01T08:05:00Z",
+    lastEventId: 9,
+    engagements: [
+      { id: "eng_r", customer_name: "myjam.co.uk", status: "running", active_loop: "company-research", last_event_at: "2026-09-01T08:00:22Z", last_note: "", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      { id: "run_a0", engagement_id: "eng_r", loop_name: "company-research", attempt: 0, status: "gate_failed", iteration_count: 2, last_event_at: "2026-09-01T07:59:55Z", started_at: "2026-09-01T07:50:31Z" },
+      { id: "run_a1", engagement_id: "eng_r", loop_name: "company-research", attempt: 1, status: "running", iteration_count: 0, last_event_at: "2026-09-01T08:00:22Z", started_at: "2026-09-01T08:00:22Z" },
+    ],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: [],
+  };
+  for (const hash of ["#/runs/eng_r/run_a1", "#/runs/eng_r/run_a0"]) {
+    const { root } = mount({ hash, snap });
+    const research = root.querySelector('[data-pipe="company-research"] [data-pipe-state]');
+    const website = root.querySelector('[data-pipe="website"] [data-pipe-state]');
+    assert.ok(research && website, `both chain chips render for ${hash}`);
+    assert.match(research.textContent, /running/, `${hash}: chip reflects attempt 1 (running), not attempt 0 (gate_failed)`);
+    assert.doesNotMatch(research.textContent, /gate_failed/);
+    assert.match(website.textContent, /not started/);
+    assert.doesNotMatch(website.textContent, /queued/);
+  }
+});

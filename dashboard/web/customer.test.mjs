@@ -12,9 +12,9 @@ function fixtureEvents() {
   ];
   const events = [
     { kind: "loop_run.started", loop_run_id: "run_res", payload: { loopName: "company-research" } },
-    { kind: "iteration.recorded", loop_run_id: "run_res", payload: { n: 1 } },
     { kind: "gate.checked", loop_run_id: "run_res", payload: { passed: true } },
-    { kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1 } },
+    { kind: "loop_run.prepared", loop_run_id: "run_web", payload: { traceRef: "pi://session/x" } },
+    { kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1, verdict: "approve" } },
     { kind: "gate.checked", loop_run_id: "run_web", payload: { passed: true } },
   ];
   return { loop_runs, events };
@@ -33,10 +33,46 @@ test("loading steps advance in order when fixture events 1–5 are applied, and 
   applied.push(events[0]);
   assert.equal(loadingProgress({ events: applied, loop_runs }).completed, 5);
   const failOnly = events.slice(0, 4).concat([{ kind: "gate.checked", loop_run_id: "run_web", payload: { passed: false } }]);
+  const heldNoApprove = loadingProgress({
+    events: events.slice(0, 3).concat([
+      { kind: "iteration.recorded", loop_run_id: "run_web", payload: { n: 1, verdict: "revise" } },
+    ]),
+    loop_runs,
+  });
+  assert.equal(heldNoApprove.completed, 3, "a revise verdict keeps 'building' active");
   const held = loadingProgress({ events: failOnly, loop_runs });
   assert.equal(held.completed, 4);
   assert.equal(held.activeIndex, 4);
   assert.equal(held.hold, true);
+});
+
+test("research iterations, a failed research gate and an orchestrator retry keep step 2 active (live myjam.co.uk shape)", () => {
+  const loop_runs = [
+    { id: "run_a0", loop_name: "company-research", attempt: 0 },
+    { id: "run_a1", loop_name: "company-research", attempt: 1 },
+  ];
+  const events = [
+    { kind: "loop_run.started", loop_run_id: "run_a0", payload: { loopName: "company-research", attempt: 0 } },
+    { kind: "iteration.recorded", loop_run_id: "run_a0", payload: { n: 1, verdict: "revise" } },
+    { kind: "iteration.recorded", loop_run_id: "run_a0", payload: { n: 2, verdict: "approve" } },
+    { kind: "gate.checked", loop_run_id: "run_a0", payload: { passed: false, checks: [] } },
+    { kind: "loop_run.finished", loop_run_id: "run_a0", payload: { status: "gate_failed" } },
+    { kind: "loop_run.retry", loop_run_id: "run_a1", payload: { previousRunId: "run_a0", attempt: 1, loop: "company-research" } },
+    { kind: "loop_run.started", loop_run_id: "run_a1", payload: { loopName: "company-research", attempt: 1 } },
+    { kind: "iteration.recorded", loop_run_id: "run_a1", payload: { n: 1, verdict: "approve" } },
+  ];
+  const seen = [];
+  const applied = [];
+  for (const ev of events) {
+    applied.push(ev);
+    seen.push(loadingProgress({ events: applied, loop_runs }).completed);
+  }
+  assert.deepEqual(seen, [1, 1, 1, 1, 1, 1, 1, 1]);
+  const p = loadingProgress({ events, loop_runs });
+  assert.equal(p.activeIndex, 1, "'researching the market' stays the active step");
+  assert.equal(p.hold, false);
+  applied.push({ kind: "gate.checked", loop_run_id: "run_a1", payload: { passed: true, checks: [] } });
+  assert.equal(loadingProgress({ events: applied, loop_runs }).completed, 2, "research gate pass → planning active");
 });
 
 test("start and loading markup include mascot and five steps", () => {
@@ -421,7 +457,7 @@ test("request-changes clears website step events until the new run's gate passes
   assert.equal(session.state.rebuilding, true);
   const after = loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs });
   assert.ok(after.completed < 5, after);
-  assert.equal(after.completed, 3);
+  assert.equal(after.completed, 2); // research passed, website events cleared → planning active
   await session.paint();
   assert.equal(root.querySelector("[data-step='5']").classList.contains("done"), false);
   assert.match(root.textContent, /[Rr]ebuilding with your notes/);
@@ -433,7 +469,7 @@ test("request-changes clears website step events until the new run's gate passes
     payload: { n: 1 },
     entities: { loop_runs: [{ id: "run_web2", loop_name: "website" }] },
   });
-  assert.equal(loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs }).completed, 4);
+  assert.equal(loadingProgress({ events: session.state.events, loop_runs: session.state.loop_runs }).completed, 3); // new website iteration → building active
   await FakeEventSource.last.emit({
     id: 11,
     kind: "gate.checked",
@@ -504,7 +540,7 @@ test("reload mid-rebuild does not mark step 5 done until the new website run's g
     loop_runs: session.state.loop_runs,
     approvals: session.state.approvals,
   });
-  assert.equal(mid.completed, 4, mid);
+  assert.equal(mid.completed, 3, mid); // rebuilding: building active until the new run's gate passes
   assert.equal(root.querySelector("[data-step='5']").classList.contains("done"), false);
   await FakeEventSource.last.emit({
     id: 11,
