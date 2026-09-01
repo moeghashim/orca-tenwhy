@@ -3,7 +3,7 @@
 // wait real time (so requestAnimationFrame paints happen), probe the DOM, screenshot, and exit non-zero
 // when the page reported an error or drew no canvas. Node 24 built-in WebSocket; no dependencies.
 //
-//   node dashboard/tools/cdp_render.mjs <url> <out.png> [waitMs=3500] [minCanvases=1]
+//   node dashboard/tools/cdp_render.mjs <url> <out.png> [waitMs=3500] [minCanvases=1] [windowSize=1200,900]
 //
 // The page under test should expose <pre id="err"> filled by window 'error' / 'unhandledrejection'
 // handlers (empty or "no-error-yet" means clean).
@@ -13,18 +13,19 @@ import os from "node:os";
 import path from "node:path";
 
 const CHROME = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const [url, out, waitArg, minArg] = process.argv.slice(2);
+const [url, out, waitArg, minArg, sizeArg] = process.argv.slice(2);
 if (!url || !out) {
   console.error("usage: cdp_render.mjs <url> <out.png> [waitMs] [minCanvases]");
   process.exit(2);
 }
 const waitMs = Number(waitArg || 3500);
 const minCanvases = Number(minArg || 1);
+const windowSize = /^\d+,\d+$/.test(sizeArg || "") ? sizeArg : "1200,900";
 const port = 9300 + Math.floor(Math.random() * 500);
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "cdp-render-"));
 const chrome = spawn(
   CHROME,
-  ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${port}`, "--window-size=1200,900", `--user-data-dir=${profile}`, "about:blank"],
+  ["--headless=new", "--disable-gpu", "--hide-scrollbars", `--remote-debugging-port=${port}`, `--window-size=${windowSize}`, `--user-data-dir=${profile}`, "about:blank"],
   { stdio: "ignore" },
 );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
