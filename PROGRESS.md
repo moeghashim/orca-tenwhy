@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(open: `REVIEWED: P11 issues #r20` — `mount.js:4`: plain `node --test "dashboard/web/*.test.mjs"` fails because `ResearchGrid.jsx` needs the custom JSX loader (`--import ./dashboard/web/jsx-register.mjs`); #r19 items closed (`cbe19bf` URI cells http/https only; `97fdb51` `634405b` cdp_render port 0 + guaranteed cleanup) → `build/briefs/P11-fix-3.md` (component via createElement, loader + esbuild/plugin-react removed, plain node --test everywhere; Grok in progress). Earlier rounds all ok: #r18 dashboard page, #r17 customer steps, #r15 daemon lock, #r12 gates.)_
+_(open: `REVIEWED: P11 issues #r21` — after a plain `npm ci`, Node resolves the submodule's nested React for the linked grid package → invalid-hook failures in the plain test command (58/62); the React cleanup only ran inside `make vendor-tengrids` → `build/briefs/P11-fix-4.md` (shared `dedupe_react.mjs` from root postinstall + the make target, same-instance test; Grok in progress). #r20 item closed by `bedb1fd` (createElement, no JSX loader). Earlier rounds all ok.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
