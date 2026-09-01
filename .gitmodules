@@ -1,0 +1,3 @@
+[submodule "dashboard/vendor/tengrids"]
+	path = dashboard/vendor/tengrids
+	url = https://github.com/moeghashim/tengrids.git
