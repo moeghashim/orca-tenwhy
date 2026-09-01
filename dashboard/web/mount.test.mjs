@@ -34,6 +34,17 @@ test("mountResearchGrid renders one root, update keeps it, unmount removes it", 
   assert.equal(host.querySelectorAll(".research-grid").length, 0);
 });
 
+test("mountResearchGrid initialTab opens that tab's model columns", () => {
+  setupDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const research = myjamResearch();
+  mountResearchGrid(host, { research, variant: "customer", initialTab: "ideas" });
+  assert.equal(host.querySelector(".research-grid").getAttribute("data-active-tab"), "ideas");
+  const titles = [...host.querySelectorAll("[data-grid-col]")].map((n) => n.textContent);
+  assert.deepEqual(titles, ["#", "idea", "rationale"]);
+});
+
 test("customer results mounts exactly one grid; re-render does not create a second #portal", () => {
   setupDom();
   const root = document.getElementById("app");

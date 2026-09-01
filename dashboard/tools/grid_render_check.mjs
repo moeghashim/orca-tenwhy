@@ -59,7 +59,7 @@ await new Promise((resolve, reject) => {
 const port = server.address().port;
 const url = `http://127.0.0.1:${port}/render-check.html`;
 
-const child = spawn(process.execPath, [cdp, url, screenshot, "3500", "1"], {
+const child = spawn(process.execPath, [cdp, url, screenshot, "3500", "20"], {
   stdio: "inherit",
   cwd: repo,
 });

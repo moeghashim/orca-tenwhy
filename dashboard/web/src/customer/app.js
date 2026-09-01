@@ -1,4 +1,3 @@
-import { renderComparison } from "../app.js";
 import { attachResearchGrid, unmountResearchGrid } from "../research-grid/mount.js";
 import { loadingProgress, PHASES, STEP_LABELS } from "./progress.js";
 
@@ -164,7 +163,6 @@ export function renderResults({
     );
     const gridHost = el("div", { class: "research-grid-host", "data-card": "research-grid" });
     const wrap = el("div", { class: "research", "data-tab": "research" }, about, el("div", { class: "r-grid" }, learn, win), el("div", { class: "r-card" }, el("div", { class: "r-h" }, "Your competitors"), gridHost));
-    if (comparison) wrap.append(renderComparison(comparison));
     body.push(wrap);
   } else {
     const id = engagement?.id || "";

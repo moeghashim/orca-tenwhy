@@ -14,9 +14,9 @@ function toGridCell(cell) {
   return { ...cell, kind };
 }
 
-export function ResearchGrid({ research, comparison, variant = "customer" }) {
+export function ResearchGrid({ research, comparison, variant = "customer", initialTab } = {}) {
   const model = useMemo(() => researchToGridModel(research, comparison), [research, comparison]);
-  const [tabId, setTabId] = useState(model.tabs[0]?.id || "competitors");
+  const [tabId, setTabId] = useState(initialTab || model.tabs[0]?.id || "competitors");
   const tab = model.tabs.find((t) => t.id === tabId) || model.tabs[0];
   const columns = tab?.columns || [];
   const rows = tab?.rows || [];
@@ -28,7 +28,7 @@ export function ResearchGrid({ research, comparison, variant = "customer" }) {
   const height = gridHeight(rows.length);
   const theme = useMemo(() => gridTheme(), []);
   return (
-    <div className="research-grid" data-variant={variant}>
+    <div className="research-grid" data-variant={variant} data-active-tab={tab?.id || ""}>
       <div className="pills research-grid-tabs" data-grid-tabs="1">
         {model.tabs.map((t) => (
           <button
@@ -40,6 +40,13 @@ export function ResearchGrid({ research, comparison, variant = "customer" }) {
           >
             {t.label}
           </button>
+        ))}
+      </div>
+      <div hidden data-grid-model-cols="1">
+        {columns.map((c, i) => (
+          <span key={`${c.title}:${i}`} data-grid-col={c.title}>
+            {c.title}
+          </span>
         ))}
       </div>
       <DataEditor

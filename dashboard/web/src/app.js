@@ -9,6 +9,29 @@ function destroyResearchGrids(node) {
   node.querySelectorAll("[data-research-grid]").forEach(unmountResearchGrid);
 }
 
+function makeResearchGridCard() {
+  return el(
+    "div",
+    { class: "card", "data-research-grid-card": "1" },
+    el("div", { class: "card-h" }, "research grid"),
+    el("div", { "data-research-grid": "1" }),
+  );
+}
+
+function placeResearchGridCard(shell) {
+  let card = shell.querySelector("[data-research-grid-card]");
+  if (!card) card = makeResearchGridCard();
+  const cols = shell.querySelector(".loop-cols");
+  if (cols) cols.before(card);
+  else {
+    const adj = shell.querySelector("[data-adjusted]");
+    const pipe = shell.querySelector("[data-pipeline]");
+    if (adj) adj.after(card);
+    else if (pipe) pipe.after(card);
+  }
+  return card;
+}
+
 function scheduleResearchGrid(shell, engId, runId, comparison) {
   const host = shell?.querySelector("[data-research-grid]");
   if (!host || !engId || !runId) return;
@@ -642,20 +665,15 @@ function renderLoop(store, route, now, go) {
   const scrapeCard = el("div", { class: "card", "data-scrape-card": "1" }, el("div", { class: "card-h" }, "scrape provenance"));
   for (const s of scrapes) scrapeCard.append(makeScrapeRow(s, now));
   const cols = el("div", { class: "loop-cols" }, timeline, el("div", { class: "loop-side" }, gateCard, scrapeCard));
-  kids.push(cols);
   const latest = Object.keys(snap.comparisons || {}).find((id) => {
     const r = snap.loop_runs.find((x) => x.id === id);
     return r && r.engagement_id === eng.id && r.loop_name === "company-research";
   });
   if (run.loop_name === "company-research") {
-    kids.push(
-      el(
-        "div",
-        { class: "card", "data-research-grid-card": "1" },
-        el("div", { class: "card-h" }, "research grid"),
-        el("div", { "data-research-grid": "1" }),
-      ),
-    );
+    kids.push(makeResearchGridCard());
+  }
+  kids.push(cols);
+  if (run.loop_name === "company-research") {
     if (snap.comparisons?.[run.id]) {
       kids.push(renderComparison(snap.comparisons[run.id]));
     } else if (latest && latest !== run.id) {
@@ -1023,6 +1041,7 @@ function syncLoop(shell, route, store, now) {
   });
   if (run.loop_name === "company-research") {
     const main = shell.querySelector("main") || shell;
+    placeResearchGridCard(shell);
     let cmpCard = shell.querySelector("[data-comparison]");
     const superseded = shell.querySelector("[data-cmp-superseded]");
     if (snap.comparisons?.[run.id]) {

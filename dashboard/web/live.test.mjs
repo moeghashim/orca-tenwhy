@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
+import { flushSync } from "react-dom";
 import { renderApp } from "./src/app.js";
+import { installGridTestStubs } from "./src/research-grid/canvas-stub.js";
+import { myjamComparison, myjamResearch } from "./src/research-grid/fixture.js";
+import { researchToGridModel } from "./src/research-grid/model.js";
+import { attachResearchGrid } from "./src/research-grid/mount.js";
 import { connectSse } from "./src/sse.js";
 import { createStore } from "./src/store.js";
 
@@ -669,5 +674,53 @@ test("sidebar links to the loop-graph explainer page (graph.html) so it can be f
   assert.ok(link, "nav has a graph.html link");
   assert.match(link.textContent, /How it works/);
   assert.equal(link.classList.contains("on"), false);
+});
+
+test("research grid tabs exist on a company-research run and prices click switches model columns", () => {
+  const dom = new JSDOM("<!DOCTYPE html><div id='app'></div><div id='portal'></div>", { url: "http://127.0.0.1:4310/" });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.HTMLCanvasElement = dom.window.HTMLCanvasElement;
+  globalThis.Image = dom.window.Image;
+  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  installGridTestStubs();
+  const snap = {
+    serverTime: "2026-08-30T22:00:00Z",
+    snapshotAt: "2026-08-30T22:00:00Z",
+    lastEventId: 1,
+    engagements: [
+      { id: "eng_a", customer_name: "Alpha", status: "running", active_loop: "company-research", last_event_at: "2026-08-30T21:59:00Z", last_note: "", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      { id: "run_a", engagement_id: "eng_a", loop_name: "company-research", attempt: 0, status: "running", iteration_count: 1, last_note: "", last_event_at: "2026-08-30T21:59:00Z", adjusted_instructions: null, change_request_id: null },
+    ],
+    iterations: [],
+    gate_checks: [],
+    scrapes: [],
+    approvals: [],
+    comparisons: {},
+  };
+  const store = createStore(snap);
+  const root = document.getElementById("app");
+  renderApp(root, { store, hash: "#/runs/eng_a/run_a", now: Date.parse("2026-08-30T22:00:00Z"), go() {} });
+  const card = root.querySelector("[data-research-grid-card]");
+  const cols = root.querySelector(".loop-cols");
+  assert.ok(card, "research grid card is on the run page");
+  assert.equal(card.querySelector(".card-h").textContent, "research grid");
+  assert.equal(card.nextElementSibling, cols, "grid card sits directly before cols");
+  const research = myjamResearch();
+  const comparison = myjamComparison();
+  attachResearchGrid(card.querySelector("[data-research-grid]"), { research, comparison, variant: "dashboard" });
+  const tabs = [...card.querySelectorAll("[data-grid-tab]")];
+  assert.equal(tabs.length, 3);
+  assert.deepEqual(
+    tabs.map((t) => t.getAttribute("data-grid-tab")),
+    ["competitors", "prices", "ideas"],
+  );
+  const prices = researchToGridModel(research, comparison).tabs.find((t) => t.id === "prices");
+  flushSync(() => card.querySelector('[data-grid-tab="prices"]').click());
+  assert.equal(card.querySelector(".research-grid").getAttribute("data-active-tab"), "prices");
+  const titles = [...card.querySelectorAll("[data-grid-col]")].map((n) => n.textContent);
+  assert.deepEqual(titles, prices.columns.map((c) => c.title));
 });
 

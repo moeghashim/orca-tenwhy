@@ -4,10 +4,10 @@ import { createElement } from "react";
 import { ResearchGrid } from "./ResearchGrid.jsx";
 import "@glideapps/glide-data-grid/dist/index.css";
 
-export function mountResearchGrid(el, { research, comparison, variant } = {}) {
+export function mountResearchGrid(el, { research, comparison, variant, initialTab } = {}) {
   if (!el) throw new Error("mountResearchGrid requires an element");
   const root = createRoot(el);
-  let props = { research, comparison, variant };
+  let props = { research, comparison, variant, initialTab };
   function paint() {
     flushSync(() => {
       root.render(createElement(ResearchGrid, props));
