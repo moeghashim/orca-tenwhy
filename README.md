@@ -35,7 +35,7 @@ Verified values: `system/config/environment.md`. Loop caps and wiring: `system/c
 
 ## Verify
 
-Requires Node ≥ 20 and the `sqlite3` CLI.
+Requires Node ≥ 20, the `sqlite3` CLI, and (for the research grid) bash ≥ 4 plus `jq` to build the `dashboard/vendor/tengrids` submodule. `make verify` runs `make vendor-tengrids` first; that target is a no-op when `packages/core/dist/esm/index.js` is already newer than the submodule HEAD commit.
 
 ```bash
 make verify
