@@ -95,21 +95,15 @@ function runsFor(snap, engId) {
   return (snap.loop_runs || []).filter((r) => r.engagement_id === engId);
 }
 
-/** Latest run of a loop for an engagement (highest attempt, then most recent) — the chain chip must
- *  reflect the current retry, not attempt 0. */
+/** Current run of a loop for an engagement: the queued/running one if any (only one can be live per
+ *  loop), otherwise the most recently started. This follows change-request chains correctly — a new
+ *  chain restarts at attempt 0, so "highest attempt" would wrongly pick the old chain (Codex #r16). */
 function latestRunFor(snap, engId, loopName) {
-  let best = null;
-  for (const r of runsFor(snap, engId)) {
-    if (r.loop_name !== loopName) continue;
-    if (!best) {
-      best = r;
-      continue;
-    }
-    const a = Number(r.attempt) || 0;
-    const b = Number(best.attempt) || 0;
-    if (a > b || (a === b && String(r.started_at || r.created_at || "") >= String(best.started_at || best.created_at || ""))) best = r;
-  }
-  return best;
+  const runs = runsFor(snap, engId).filter((r) => r.loop_name === loopName);
+  if (!runs.length) return null;
+  const live = runs.filter((r) => r.status === "running" || r.status === "queued");
+  if (live.length) return live[live.length - 1];
+  return runs.reduce((best, r) => (String(r.started_at || "") >= String(best.started_at || "") ? r : best));
 }
 
 function activeRun(snap, eng) {

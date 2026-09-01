@@ -618,3 +618,48 @@ test("loop chain shows the latest attempt per loop and 'not started' for loops w
     assert.doesNotMatch(website.textContent, /queued/);
   }
 });
+
+test("loop chain follows the newest change-request chain (attempt 0 of the new chain beats attempt 1 of the old one)", () => {
+  const base = {
+    serverTime: "2026-09-01T09:00:00Z",
+    snapshotAt: "2026-09-01T09:00:00Z",
+    lastEventId: 20,
+    engagements: [
+      { id: "eng_c", customer_name: "Chain", status: "running", active_loop: "website", last_event_at: "2026-09-01T08:50:00Z", last_note: "", kb_files: [], live_url: null, repo_url: null },
+    ],
+    loop_runs: [
+      { id: "run_r0", engagement_id: "eng_c", loop_name: "company-research", attempt: 0, status: "gate_passed", iteration_count: 1, last_event_at: "2026-09-01T08:10:00Z", started_at: "2026-09-01T08:00:00Z" },
+      { id: "run_w0", engagement_id: "eng_c", loop_name: "website", attempt: 0, status: "gate_failed", iteration_count: 2, last_event_at: "2026-09-01T08:20:00Z", started_at: "2026-09-01T08:10:00Z" },
+      { id: "run_w1", engagement_id: "eng_c", loop_name: "website", attempt: 1, status: "gate_failed", iteration_count: 3, last_event_at: "2026-09-01T08:30:00Z", started_at: "2026-09-01T08:21:00Z" },
+      { id: "run_w2", engagement_id: "eng_c", loop_name: "website", attempt: 0, change_request_id: "apr_chg", status: "running", iteration_count: 0, last_event_at: "2026-09-01T08:50:00Z", started_at: "2026-09-01T08:50:00Z" },
+    ],
+    iterations: [], gate_checks: [], scrapes: [], approvals: [], comparisons: [],
+  };
+  // live run of the new chain wins over the old chain's higher attempt
+  {
+    const { root } = mount({ hash: "#/runs/eng_c/run_w2", snap: base });
+    const chip = root.querySelector('[data-pipe="website"] [data-pipe-state]');
+    assert.match(chip.textContent, /running/);
+    assert.doesNotMatch(chip.textContent, /gate_failed/);
+  }
+  // once the new chain's attempt 0 has finished, it still wins by start time (not by attempt number)
+  {
+    const snap = structuredClone(base);
+    snap.loop_runs[3].status = "gate_passed";
+    const { root } = mount({ hash: "#/runs/eng_c/run_w2", snap });
+    const chip = root.querySelector('[data-pipe="website"] [data-pipe-state]');
+    assert.match(chip.textContent, /gate_passed/);
+    assert.doesNotMatch(chip.textContent, /gate_failed/);
+  }
+  // a queued (not yet started, started_at null) run is the current one
+  {
+    const snap = structuredClone(base);
+    snap.loop_runs[3].status = "queued";
+    snap.loop_runs[3].started_at = null;
+    snap.loop_runs.unshift(snap.loop_runs.pop()); // snapshot orders NULL started_at first
+    const { root } = mount({ hash: "#/runs/eng_c/run_w1", snap });
+    const chip = root.querySelector('[data-pipe="website"] [data-pipe-state]');
+    assert.match(chip.textContent, /queued/);
+  }
+});
+
