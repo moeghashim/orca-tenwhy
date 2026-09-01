@@ -1044,6 +1044,7 @@ export function renderApp(root, { store, hash, now, go = (h) => { window.locatio
     { href: "#/runs", glyph: "▤", label: "Runs", count: active, show: true },
     { href: "#/failures", glyph: "⚑", label: "Failures", count: nNeeds, show: nNeeds > 0, amber: true },
     { href: "#/customers", glyph: "▦", label: "Customers", count: "", show: false },
+    { href: "graph.html", glyph: "◎", label: "How it works", count: "", show: false },
   ];
   const side = el(
     "aside",

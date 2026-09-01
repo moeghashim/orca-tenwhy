@@ -14,6 +14,7 @@ export default defineConfig({
       input: {
         main: path.join(dir, "index.html"),
         customer: path.join(dir, "customer.html"),
+        graph: path.join(dir, "graph.html"),
       },
     },
   },

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tenwhy / how the loops work</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <style>
+  :root {
+    --ground: #141416;
+    --chalk: #e9e6dc;
+    --chalk-dim: #a09d94;
+    --line: #d8d5cb;
+    --callout: #4a2a2f;
+    --callout-ink: #f2dcdc;
+    --callout-edge: #7a4a50;
+    --gate: #b9d9a5;
+    --hub: #1f1f23;
+    --mono-ink: #cfcbbf;
+    --hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+    --mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground: #f3f0e8;
+      --chalk: #1e1d1a;
+      --chalk-dim: #6b6862;
+      --line: #2a2926;
+      --callout: #f0d9d9;
+      --callout-ink: #4a1f25;
+      --callout-edge: #b98a90;
+      --gate: #2f6b2a;
+      --hub: #e6e2d7;
+      --mono-ink: #3a3833;
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f3f0e8;
+    --chalk: #1e1d1a;
+    --chalk-dim: #6b6862;
+    --line: #2a2926;
+    --callout: #f0d9d9;
+    --callout-ink: #4a1f25;
+    --callout-edge: #b98a90;
+    --gate: #2f6b2a;
+    --hub: #e6e2d7;
+    --mono-ink: #3a3833;
+  }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--chalk);
+    font-family: var(--hand);
+    font-size: 20px;
+    line-height: 1.3;
+  }
+  .page { max-width: 1680px; margin: 0 auto; padding: 32px 28px 56px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 28px; margin-bottom: 8px; }
+  h1 { font-family: var(--hand); font-weight: 700; font-size: 46px; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+  .sub { font-family: var(--mono); font-size: 13px; color: var(--chalk-dim); letter-spacing: 0.02em; }
+  .canvas { overflow-x: auto; margin-top: 12px; }
+  svg { display: block; min-width: 1500px; width: 100%; height: auto; }
+  .stroke { fill: none; stroke: var(--line); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: url(#wobble); }
+  .stroke.thin { stroke-width: 1.5; }
+  .box { fill: none; stroke: var(--line); stroke-width: 2; filter: url(#wobble); }
+  .hubbox { fill: var(--hub); stroke: var(--line); stroke-width: 2.2; filter: url(#wobble); }
+  .t { font-family: var(--hand); font-size: 22px; font-weight: 500; fill: var(--chalk); }
+  .t.big { font-size: 40px; font-weight: 700; }
+  .t.mid { font-size: 26px; font-weight: 700; }
+  .t.dim { fill: var(--chalk-dim); font-size: 18px; }
+  .t.gate { fill: var(--gate); }
+  .m { font-family: var(--mono); font-size: 13px; fill: var(--mono-ink); }
+  .m.dim { fill: var(--chalk-dim); }
+  .chip { fill: var(--callout); stroke: var(--callout-edge); stroke-width: 1.2; }
+  .chipt { font-family: var(--hand); font-size: 17px; font-weight: 500; fill: var(--callout-ink); text-anchor: middle; }
+  .key { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 28px; margin-top: 26px; padding-top: 22px; border-top: 1px dashed var(--chalk-dim); }
+  .key h2 { font-family: var(--hand); font-size: 28px; font-weight: 700; margin: 0 0 6px; }
+  .key ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .key li { font-family: var(--mono); font-size: 13px; color: var(--mono-ink); }
+  .key li span { color: var(--chalk-dim); }
+  .key p { margin: 8px 0 0; color: var(--chalk-dim); font-size: 19px; max-width: 42ch; }
+  @media (prefers-reduced-motion: no-preference) {
+    .draw { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: draw 1.6s ease-out forwards; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+  }
+
+      .back { font-family: var(--mono); font-size: 13px; color: var(--chalk-dim); text-decoration: none; border: 1px solid var(--chalk-dim); border-radius: 6px; padding: 4px 10px; }
+      .back:hover, .back:focus-visible { color: var(--chalk); border-color: var(--chalk); outline: none; }
+    </style>
+  </head>
+  <body>
+
+<div class="page">
+  <header>
+    <a class="back" href="./">← console</a>
+    <h1>Tenwhy Loop Graph</h1>
+    <div class="sub">two loops · one edge · a daemon in the middle · a person at the end &nbsp;—&nbsp; from SOP-loop-graph.md as built and run on 2026-09-01</div>
+  </header>
+
+  <div class="canvas">
+  <svg viewBox="0 0 1600 1080" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram of the tenwhy graph of loops: the company-research loop and the website loop, connected through the orchestrator daemon, ending at the customer approval and deploy">
+    <defs>
+      <filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1080">
+        <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="7" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+      <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+        <path d="M1 1.5 L10.5 6 L1 10.5" fill="none" stroke="var(--line)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- ================= COMPANY RESEARCH LOOP ================= -->
+    <text class="t big" x="44" y="58">Company research</text>
+    <text class="m dim" x="332" y="56">system/loops/company-research/</text>
+    <rect class="box" x="40" y="78" width="660" height="392" rx="16"/>
+
+    <!-- top-left: trigger -->
+    <text class="t" x="70" y="134">
+      <tspan x="70">Engagement queued</tspan>
+      <tspan x="70" dy="22" class="m">loopctl new · or the start page</tspan>
+      <tspan x="70" dy="18" class="m">inputs: idea and/or site_url</tspan>
+    </text>
+    <path class="stroke draw" d="M318 128 L 368 128" marker-end="url(#arrow)"/>
+    <!-- top-right: executor -->
+    <text class="t" x="384" y="134">
+      <tspan x="384">Grok scrapes the market</tspan>
+      <tspan x="384" dy="22" class="m">executor.md → Pi, scrape tool</tspan>
+      <tspan x="384" dy="18" class="m">robots-aware · every fetch logged</tspan>
+    </text>
+    <path class="stroke draw" d="M470 190 L 470 240" marker-end="url(#arrow)"/>
+    <!-- bottom-right: reviewer -->
+    <text class="t" x="384" y="272">
+      <tspan x="384">Luna reviews, no tools</tspan>
+      <tspan x="384" dy="22" class="m">reviewer.md → checks 1–5</tspan>
+      <tspan x="384" dy="18" class="m">verdict: approve / revise</tspan>
+    </text>
+    <!-- revise curve: reviewer back to executor -->
+    <path class="stroke thin draw" d="M640 262 C 676 236, 676 178, 640 152" marker-end="url(#arrow)"/>
+    <text class="t dim" x="606" y="212" style="font-size:16px">revise ≤4</text>
+    <path class="stroke draw" d="M368 264 L 318 264" marker-end="url(#arrow)"/>
+    <!-- bottom-left: gate -->
+    <text class="t gate" x="70" y="272">
+      <tspan x="70">research_gate.py</tspan>
+      <tspan x="70" dy="22" class="m">schema · ≥5 competitors · products ≥25%</tspan>
+      <tspan x="70" dy="18" class="m">≥3 ideas · SOURCES.md complete</tspan>
+    </text>
+    <!-- retry: gate back to start -->
+    <path class="stroke thin draw" d="M160 336 L 160 186" marker-end="url(#arrow)"/>
+    <text class="t dim" x="170" y="228" style="font-size:16px">gate fails →</text>
+    <text class="t dim" x="170" y="246" style="font-size:16px">retry ≤2</text>
+
+    <!-- outputs -->
+    <line class="stroke thin" x1="60" y1="358" x2="680" y2="358"/>
+    <text class="m dim" x="66" y="382">writes into the customer repo (each file carries a pi://session trace)</text>
+    <text class="m" x="66" y="404">research/RESEARCH.json   research/SOURCES.md</text>
+    <text class="m" x="66" y="426">company/OVERVIEW.md  POSITIONING.md  FINDINGS.md  competitors/*.md  products/*.md</text>
+
+    <!-- ================= WEBSITE LOOP ================= -->
+    <text class="t big" x="44" y="626">Website</text>
+    <text class="m dim" x="192" y="624">system/loops/website/</text>
+    <rect class="box" x="40" y="646" width="660" height="414" rx="16"/>
+
+    <!-- top-left: handoff -->
+    <text class="t" x="70" y="702">
+      <tspan x="70">Handoff arrives</tspan>
+      <tspan x="70" dy="22" class="m">input: research/RESEARCH.json</tspan>
+      <tspan x="70" dy="18" class="m">nothing else crosses the edge</tspan>
+    </text>
+    <path class="stroke draw" d="M318 696 L 368 696" marker-end="url(#arrow)"/>
+    <!-- top-right: designer -->
+    <text class="t" x="384" y="702">
+      <tspan x="384">Luna designs the brand</tspan>
+      <tspan x="384" dy="22" class="m">design.md → brand/tokens.json</tspan>
+      <tspan x="384" dy="18" class="m">logo.svg · BRAND.md · IMAGE_BRIEF.md</tspan>
+    </text>
+    <path class="stroke draw" d="M470 756 L 470 790" marker-end="url(#arrow)"/>
+    <!-- middle-right: executor -->
+    <text class="t" x="384" y="822">
+      <tspan x="384">Grok builds the Vite site</tspan>
+      <tspan x="384" dy="22" class="m">executor.md → Pi file tools</tspan>
+      <tspan x="384" dy="18" class="m">behind path-guard · no network</tspan>
+    </text>
+    <path class="stroke draw" d="M470 876 L 470 910" marker-end="url(#arrow)"/>
+    <!-- bottom-right: reviewer -->
+    <text class="t" x="384" y="942">
+      <tspan x="384">Luna reviews, no tools</tspan>
+      <tspan x="384" dy="22" class="m">reviewer.md · approve = run the gate</tspan>
+    </text>
+    <path class="stroke thin draw" d="M640 934 C 676 908, 676 848, 640 822" marker-end="url(#arrow)"/>
+    <text class="t dim" x="606" y="882" style="font-size:16px">revise ≤4</text>
+    <path class="stroke draw" d="M376 926 L 318 904" marker-end="url(#arrow)"/>
+    <!-- bottom-left: gate -->
+    <text class="t gate" x="70" y="900">
+      <tspan x="70">website_gate.py</tspan>
+      <tspan x="70" dy="22" class="m">sandbox-exec · brand · build</tspan>
+      <tspan x="70" dy="18" class="m">links · grounded · Lighthouse ≥85</tspan>
+    </text>
+    <path class="stroke thin draw" d="M160 878 L 160 754" marker-end="url(#arrow)"/>
+    <text class="t dim" x="170" y="800" style="font-size:16px">gate fails →</text>
+    <text class="t dim" x="170" y="818" style="font-size:16px">retry ≤2</text>
+
+    <line class="stroke thin" x1="60" y1="984" x2="680" y2="984"/>
+    <text class="m dim" x="66" y="1008">writes into the customer repo</text>
+    <text class="m" x="66" y="1030">brand/BRAND.md  brand/IMAGE_BRIEF.md   website/*.html  website/src  website/public  website/DEPLOY.md</text>
+
+    <!-- ================= ORCHESTRATOR HUB ================= -->
+    <rect class="hubbox" x="760" y="336" width="380" height="392" rx="18"/>
+    <text class="t mid" x="786" y="378">Orchestrator daemon</text>
+    <text class="m dim" x="786" y="400">loopctl daemon · 3 s tick · sole writer</text>
+    <text class="m" x="786" y="436">system/config/loops.yaml</text>
+    <text class="t dim" x="988" y="436" style="font-size:16px">graph · caps 4 / 2</text>
+    <text class="m" x="786" y="462">state/orchestrator.db</text>
+    <text class="t dim" x="988" y="462" style="font-size:16px">events · runs · gates</text>
+    <text class="m" x="786" y="488">orchestrator.mjs</text>
+    <text class="t dim" x="988" y="488" style="font-size:16px">queue ready loops</text>
+    <text class="m" x="786" y="514">loop_runner.mjs</text>
+    <text class="t dim" x="988" y="514" style="font-size:16px">exec ↔ review ↔ gate</text>
+    <text class="m" x="786" y="540">failure.mjs</text>
+    <text class="t dim" x="988" y="540" style="font-size:16px">retry · Claude Fable 5</text>
+    <text class="m" x="786" y="566">knowledge.mjs</text>
+    <text class="t dim" x="988" y="566" style="font-size:16px">absorb → company/</text>
+    <text class="m" x="786" y="592">deploy.mjs</text>
+    <text class="t dim" x="988" y="592" style="font-size:16px">provision + deploy.sh</text>
+    <text class="m" x="786" y="618">daemon_lock.mjs</text>
+    <text class="t dim" x="988" y="618" style="font-size:16px">one daemon, ever</text>
+    <line class="stroke thin" x1="780" y1="640" x2="1120" y2="640"/>
+    <text class="m dim" x="786" y="664">rulebook  SOP-loop-graph.md</text>
+    <text class="m dim" x="786" y="686">ledger    PROGRESS.md</text>
+    <text class="m dim" x="786" y="708">Pi owns every tool · OAuth only</text>
+
+    <!-- research → hub : handoff -->
+    <path class="stroke draw" d="M702 250 C 730 280, 740 320, 762 360" marker-end="url(#arrow)"/>
+    <rect class="chip" x="446" y="492" width="236" height="52" rx="9"/>
+    <text class="chipt" x="564" y="514">gate 5/5 → absorb research</text>
+    <text class="chipt" x="564" y="534">→ handoff · queue website</text>
+    <!-- hub → research : retry -->
+    <path class="stroke thin draw" d="M768 392 C 748 372, 732 350, 708 326" marker-end="url(#arrow)" style="opacity:.8"/>
+    <rect class="chip" x="446" y="560" width="236" height="52" rx="9"/>
+    <text class="chipt" x="564" y="582">gate 3/5 → retry attempt 1</text>
+    <text class="chipt" x="564" y="602">with the failed checks</text>
+    <!-- hub → website : queue -->
+    <path class="stroke draw" d="M762 700 C 740 736, 726 770, 704 806" marker-end="url(#arrow)"/>
+    <!-- website → hub : awaiting approval -->
+    <path class="stroke draw" d="M702 970 C 800 964, 900 900, 964 732" marker-end="url(#arrow)"/>
+    <rect class="chip" x="736" y="806" width="216" height="52" rx="9"/>
+    <text class="chipt" x="844" y="828">website gate 5/5 →</text>
+    <text class="chipt" x="844" y="848">awaiting_approval</text>
+
+    <!-- ================= CUSTOMER & DEPLOY ================= -->
+    <text class="t big" x="1202" y="150">Customer &amp; deploy</text>
+    <text class="m dim" x="1204" y="176">dashboard/customer.html</text>
+    <rect class="box" x="1200" y="190" width="370" height="330" rx="16"/>
+    <text class="t" x="1226" y="244">
+      <tspan x="1226">Results page</tspan>
+      <tspan x="1226" dy="22" class="m">research tab · sandboxed preview</tspan>
+    </text>
+    <path class="stroke draw" d="M1320 286 L 1320 318" marker-end="url(#arrow)"/>
+    <text class="t" x="1226" y="348">
+      <tspan x="1226">Approve  /  Request changes</tspan>
+      <tspan x="1226" dy="22" class="m">POST /api/engagements/:id/approve</tspan>
+      <tspan x="1226" dy="18" class="m">one approvals row · 409 if not awaiting</tspan>
+    </text>
+    <path class="stroke draw" d="M1320 412 L 1320 444" marker-end="url(#arrow)"/>
+    <text class="t" x="1226" y="474">
+      <tspan x="1226">Deployed</tspan>
+      <tspan x="1226" dy="22" class="m">deploy.sh → Cloudflare Workers · URL 200</tspan>
+    </text>
+
+    <!-- hub → customer : preview ; customer → hub : decision -->
+    <path class="stroke draw" d="M1142 430 C 1160 400, 1180 320, 1200 290" marker-end="url(#arrow)"/>
+    <path class="stroke draw" d="M1200 400 C 1180 440, 1162 470, 1142 500" marker-end="url(#arrow)"/>
+    <rect class="chip" x="936" y="232" width="236" height="52" rx="9"/>
+    <text class="chipt" x="1054" y="254">approve → provision + deploy</text>
+    <text class="chipt" x="1054" y="274">→ complete</text>
+    <rect class="chip" x="936" y="288" width="236" height="52" rx="9"/>
+    <text class="chipt" x="1054" y="310">request_changes → new</text>
+    <text class="chipt" x="1054" y="330">website chain, attempt 0</text>
+
+    <!-- ================= DASHBOARD ================= -->
+    <rect class="box" x="1200" y="574" width="370" height="118" rx="16"/>
+    <text class="t mid" x="1226" y="612">Dashboard</text>
+    <text class="m dim" x="1364" y="612">dashboard/web · read-only</text>
+    <text class="t dim" x="1226" y="642" style="font-size:17px">runs · failures · customers · loop gate</text>
+    <text class="m" x="1226" y="668">GET /api/snapshot · SSE /api/events</text>
+    <path class="stroke thin draw" d="M1142 690 C 1160 684, 1180 660, 1200 648" marker-end="url(#arrow)" style="opacity:.8"/>
+
+    <!-- ================= WHO DOES THE WORK ================= -->
+    <rect class="box" x="1200" y="730" width="370" height="330" rx="16"/>
+    <text class="t mid" x="1226" y="770">Who does the work</text>
+    <text class="t" x="1226" y="808" style="font-size:20px">Executor · Grok 4.6 via Pi</text>
+    <text class="m dim" x="1226" y="828">pi -p --offline --provider xai</text>
+    <text class="m dim" x="1226" y="846">tools allow-listed per loop</text>
+    <text class="t" x="1226" y="878" style="font-size:20px">Reviewer · GPT-5.6 Luna via Pi</text>
+    <text class="m dim" x="1226" y="898">run-pi-reviewer.sh --no-tools</text>
+    <text class="m dim" x="1226" y="916">also the website designer</text>
+    <text class="t" x="1226" y="948" style="font-size:20px">Orchestrator model · Claude Fable 5</text>
+    <text class="m dim" x="1226" y="968">retry instructions · absorption</text>
+    <text class="t" x="1226" y="1000" style="font-size:20px">Gates · Python, no model</text>
+    <text class="m dim" x="1226" y="1020">research_gate.py · website_gate.py</text>
+    <text class="t dim" x="1226" y="1046" style="font-size:16px">every turn leaves a pi://session/… trace</text>
+  </svg>
+  </div>
+
+  <section class="key">
+    <div>
+      <h2>Company research</h2>
+      <ul>
+        <li>system/loops/company-research/executor.md <span>— Grok's brief: scrape within robots.txt, cite every source</span></li>
+        <li>system/loops/company-research/reviewer.md <span>— Luna's five checks, verdict approve / revise</span></li>
+        <li>system/gates/research_gate.py <span>— the structural exit; the reviewer cannot pass it</span></li>
+        <li>→ research/RESEARCH.json · research/SOURCES.md · company/*.md</li>
+      </ul>
+      <p>myjam.co.uk: attempt 0 passed review but failed the gate 3/5; attempt 1 passed 5/5.</p>
+    </div>
+    <div>
+      <h2>Website</h2>
+      <ul>
+        <li>system/loops/website/design.md <span>— Luna designer → brand/ tokens, logo, BRAND.md, IMAGE_BRIEF.md</span></li>
+        <li>system/loops/website/executor.md <span>— Grok builds the Vite site from RESEARCH.json</span></li>
+        <li>system/loops/website/reviewer.md <span>— Luna review; approve means "run the gate"</span></li>
+        <li>system/gates/website_gate.py <span>— sandboxed build, links, grounding, Lighthouse</span></li>
+        <li>→ brand/ · website/ · website/DEPLOY.md</li>
+      </ul>
+      <p>myjam.co.uk: the reviewer caught a Vite multi-page issue at n=1; gate 5/5 at n=2, Lighthouse 100/95.</p>
+    </div>
+    <div>
+      <h2>Orchestrator</h2>
+      <ul>
+        <li>SOP-loop-graph.md <span>— the rulebook everything above follows</span></li>
+        <li>system/config/loops.yaml <span>— nodes, the one edge, model strings, caps</span></li>
+        <li>system/orchestrator/*.mjs <span>— tick, runner, failure, knowledge, deploy, lock</span></li>
+        <li>state/orchestrator.db <span>— 7 tables; the events table drives both UIs</span></li>
+        <li>PROGRESS.md <span>— the build ledger (REVIEWED lines from Codex)</span></li>
+      </ul>
+      <p>Adding a loop = a node and an edge in loops.yaml plus its two prompts and a gate script.</p>
+    </div>
+  </section>
+</div>
+
+  </body>
+</html>

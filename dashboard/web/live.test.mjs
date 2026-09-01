@@ -663,3 +663,11 @@ test("loop chain follows the newest change-request chain (attempt 0 of the new c
   }
 });
 
+test("sidebar links to the loop-graph explainer page (graph.html) so it can be found from the console", () => {
+  const { root } = mount({ hash: "#/runs", snap: null });
+  const link = root.querySelector('.nav-item[href="graph.html"]');
+  assert.ok(link, "nav has a graph.html link");
+  assert.match(link.textContent, /How it works/);
+  assert.equal(link.classList.contains("on"), false);
+});
+
