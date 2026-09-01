@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(open: `REVIEWED: P11 issues #r21` — after a plain `npm ci`, Node resolves the submodule's nested React for the linked grid package → invalid-hook failures in the plain test command (58/62); the React cleanup only ran inside `make vendor-tengrids` → `build/briefs/P11-fix-4.md` (shared `dedupe_react.mjs` from root postinstall + the make target, same-instance test; Grok in progress). #r20 item closed by `bedb1fd` (createElement, no JSX loader). Earlier rounds all ok.)_
+_(open: `REVIEWED: P11 issues #r22` — `dedupe_react.mjs:35` lexical containment could follow a symlinked `node_modules` parent and delete an outside React dir from `postinstall` → `build/briefs/P11-fix-5.md` (refuse symlinked segments, realpath containment, regression tests; Grok in progress). #r21 closed by `07856c9`; #r20 by `bedb1fd`; #r19 by `cbe19bf` + orchestrator cdp_render fixes. Earlier rounds all ok.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
