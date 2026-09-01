@@ -6,7 +6,7 @@ Legend: ✅ verified + committed + `REVIEWED ok` · 🟡 verified/committed, rev
 
 ## Blockers for Moe
 
-_(open: `REVIEWED: P7 issues #r16` → hotfix `02febc7` (loop chain follows change-request chains) → #r17 pending. Second live engagement `eng_85db6740` (myjam.co.uk, started by Moe from the customer start page 2026-09-01 07:50Z, daemon + dashboard now running from the main checkout) surfaced a customer-page bug — steps advanced on research iterations instead of the gate pass, so a failed research gate + retry showed "planning" — fixed `d2e5be8` (progress.js semantics + tests; dashboard chain shows latest attempt / 'not started'). All earlier rounds closed: daemon lock `REVIEWED: P3 ok #r15`, gate hotfixes `REVIEWED: P5 ok #r12`.)_
+_(none open — `REVIEWED: P7 ok #r17` closes the customer-step/dashboard-chain hotfixes `d2e5be8` `02febc7` from the myjam.co.uk live test; earlier: daemon lock `REVIEWED: P3 ok #r15`, gate hotfixes `REVIEWED: P5 ok #r12`. Second live engagement `eng_85db6740` (myjam.co.uk): research attempt 0 gate 3/5 (unverified product URLs, incomplete SOURCES.md) → retry attempt 1 gate **5/5** at 08:14Z.)_
 
 4. **Build executor blocked (2026-08-30 ~21:20):** Grok CLI reports **"You hit your weekly limit"** (grok.com subscription). P10.1 `98c5b19` and P10.2 `105d32f` are committed; **P10.3 is half-done as uncommitted edits** in `dashboard/server/server.mjs`, `dashboard/web/src/customer/{app,main}.js` (left in place, not stashed). Round-3 fixes (`build/briefs/fix-round-3.md`) are also pending. **Resolved 2026-08-31:** Moe upgraded the Grok plan; Grok resumes as executor (P10.3 from its WIP, then `fix-round-3.md`).
 
