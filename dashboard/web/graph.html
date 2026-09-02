@@ -4,88 +4,102 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>tenwhy / how the loops work</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" />
     <style>
   :root {
-    --ground: #141416;
-    --chalk: #e9e6dc;
-    --chalk-dim: #a09d94;
-    --line: #d8d5cb;
-    --callout: #4a2a2f;
-    --callout-ink: #f2dcdc;
-    --callout-edge: #7a4a50;
-    --gate: #b9d9a5;
-    --hub: #1f1f23;
-    --mono-ink: #cfcbbf;
-    --hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
-    --mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --canvas: #f4f4f5;
+    --surface: #fafafa;
+    --inset: #ffffff;
+    --border: #d4d4d8;
+    --border-subtle: #e4e4e7;
+    --ink: #18181b;
+    --ink-2: #52525b;
+    --muted: #71717a;
+    --line: #52525b;
+    --gate: #15803d;
+    --chip-bg: #ffffff;
+    --chip-border: #d4d4d8;
+    --chip-ink: #18181b;
+    --chip-label: #9a3412;
+    --hub: #ffffff;
+    --mono-ink: #3f3f46;
+    --sans: "Geist", "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   }
-  @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
-      --ground: #f3f0e8;
-      --chalk: #1e1d1a;
-      --chalk-dim: #6b6862;
-      --line: #2a2926;
-      --callout: #f0d9d9;
-      --callout-ink: #4a1f25;
-      --callout-edge: #b98a90;
-      --gate: #2f6b2a;
-      --hub: #e6e2d7;
-      --mono-ink: #3a3833;
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --canvas: #131316;
+      --surface: #18181b;
+      --inset: #1e1e22;
+      --border: #3f3f46;
+      --border-subtle: #2a2a30;
+      --ink: #f4f4f5;
+      --ink-2: #b5b5bd;
+      --muted: #8b8b94;
+      --line: #a1a1aa;
+      --gate: #4ade80;
+      --chip-bg: #232327;
+      --chip-border: #4b4b53;
+      --chip-ink: #f4f4f5;
+      --chip-label: #fdba74;
+      --hub: #1c1c20;
+      --mono-ink: #c9c9d1;
     }
   }
-  :root[data-theme="light"] {
-    --ground: #f3f0e8;
-    --chalk: #1e1d1a;
-    --chalk-dim: #6b6862;
-    --line: #2a2926;
-    --callout: #f0d9d9;
-    --callout-ink: #4a1f25;
-    --callout-edge: #b98a90;
-    --gate: #2f6b2a;
-    --hub: #e6e2d7;
-    --mono-ink: #3a3833;
+  :root[data-theme="dark"] {
+    --canvas: #131316;
+    --surface: #18181b;
+    --inset: #1e1e22;
+    --border: #3f3f46;
+    --border-subtle: #2a2a30;
+    --ink: #f4f4f5;
+    --ink-2: #b5b5bd;
+    --muted: #8b8b94;
+    --line: #a1a1aa;
+    --gate: #4ade80;
+    --chip-bg: #232327;
+    --chip-border: #4b4b53;
+    --chip-ink: #f4f4f5;
+    --chip-label: #fdba74;
+    --hub: #1c1c20;
+    --mono-ink: #c9c9d1;
   }
   body {
     margin: 0;
-    background: var(--ground);
-    color: var(--chalk);
-    font-family: var(--hand);
-    font-size: 20px;
-    line-height: 1.3;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
   }
-  .page { max-width: 1680px; margin: 0 auto; padding: 32px 28px 56px; }
-  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 28px; margin-bottom: 8px; }
-  h1 { font-family: var(--hand); font-weight: 700; font-size: 46px; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
-  .sub { font-family: var(--mono); font-size: 13px; color: var(--chalk-dim); letter-spacing: 0.02em; }
-  .canvas { overflow-x: auto; margin-top: 12px; }
+  .page { max-width: 1680px; margin: 0 auto; padding: 28px 28px 56px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 24px; margin-bottom: 4px; }
+  h1 { font-family: var(--sans); font-weight: 600; font-size: 26px; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+  .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.01em; }
+  .canvas { overflow-x: auto; margin-top: 14px; }
   svg { display: block; min-width: 1500px; width: 100%; height: auto; }
-  .stroke { fill: none; stroke: var(--line); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: url(#wobble); }
-  .stroke.thin { stroke-width: 1.5; }
-  .box { fill: none; stroke: var(--line); stroke-width: 2; filter: url(#wobble); }
-  .hubbox { fill: var(--hub); stroke: var(--line); stroke-width: 2.2; filter: url(#wobble); }
-  .t { font-family: var(--hand); font-size: 22px; font-weight: 500; fill: var(--chalk); }
-  .t.big { font-size: 40px; font-weight: 700; }
-  .t.mid { font-size: 26px; font-weight: 700; }
-  .t.dim { fill: var(--chalk-dim); font-size: 18px; }
+  .stroke { fill: none; stroke: var(--line); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .stroke.thin { stroke-width: 1.1; stroke-dasharray: 4 4; }
+  .box { fill: var(--surface); stroke: var(--border); stroke-width: 1.4; }
+  .hubbox { fill: var(--hub); stroke: var(--ink); stroke-width: 1.6; }
+  .t { font-family: var(--sans); font-size: 14.5px; font-weight: 600; fill: var(--ink); letter-spacing: -0.005em; }
+  .t.big { font-size: 21px; font-weight: 650; }
+  .t.mid { font-size: 16.5px; font-weight: 650; }
+  .t.dim { font-family: var(--sans); font-size: 12px; font-weight: 450; fill: var(--muted); }
   .t.gate { fill: var(--gate); }
-  .m { font-family: var(--mono); font-size: 13px; fill: var(--mono-ink); }
-  .m.dim { fill: var(--chalk-dim); }
-  .chip { fill: var(--callout); stroke: var(--callout-edge); stroke-width: 1.2; }
-  .chipt { font-family: var(--hand); font-size: 17px; font-weight: 500; fill: var(--callout-ink); text-anchor: middle; }
-  .key { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 28px; margin-top: 26px; padding-top: 22px; border-top: 1px dashed var(--chalk-dim); }
-  .key h2 { font-family: var(--hand); font-size: 28px; font-weight: 700; margin: 0 0 6px; }
-  .key ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-  .key li { font-family: var(--mono); font-size: 13px; color: var(--mono-ink); }
-  .key li span { color: var(--chalk-dim); }
-  .key p { margin: 8px 0 0; color: var(--chalk-dim); font-size: 19px; max-width: 42ch; }
-  @media (prefers-reduced-motion: no-preference) {
-    .draw { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: draw 1.6s ease-out forwards; }
-    @keyframes draw { to { stroke-dashoffset: 0; } }
-  }
+  .m { font-family: var(--mono); font-size: 11.5px; fill: var(--mono-ink); }
+  .m.dim { fill: var(--muted); }
+  .chip { fill: var(--chip-bg); stroke: var(--chip-border); stroke-width: 1.1; }
+  .chipt { font-family: var(--sans); font-size: 12px; font-weight: 500; fill: var(--chip-ink); text-anchor: middle; }
+  .key { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 28px; margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--border-subtle); }
+  .key h2 { font-family: var(--sans); font-size: 15px; font-weight: 650; letter-spacing: -0.005em; margin: 0 0 8px; }
+  .key ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .key li { font-family: var(--mono); font-size: 11.5px; color: var(--mono-ink); }
+  .key li span { color: var(--muted); }
+  .key p { margin: 10px 0 0; color: var(--ink-2); font-size: 12.5px; max-width: 52ch; }
 
-      .back { font-family: var(--mono); font-size: 13px; color: var(--chalk-dim); text-decoration: none; border: 1px solid var(--chalk-dim); border-radius: 6px; padding: 4px 10px; }
-      .back:hover, .back:focus-visible { color: var(--chalk); border-color: var(--chalk); outline: none; }
+      .back { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+      .back:hover, .back:focus-visible { color: var(--ink); border-color: var(--ink); outline: none; }
     </style>
   </head>
   <body>
@@ -100,12 +114,8 @@
   <div class="canvas">
   <svg viewBox="0 0 1600 1080" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram of the tenwhy graph of loops: the company-research loop and the website loop, connected through the orchestrator daemon, ending at the customer approval and deploy">
     <defs>
-      <filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="1600" height="1080">
-        <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="7" result="n"/>
-        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
-      </filter>
-      <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
-        <path d="M1 1.5 L10.5 6 L1 10.5" fill="none" stroke="var(--line)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path d="M1 1.5 L10.5 6 L1 10.5" fill="none" stroke="var(--line)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
       </marker>
     </defs>
 
@@ -136,7 +146,7 @@
     </text>
     <!-- revise curve: reviewer back to executor -->
     <path class="stroke thin draw" d="M640 262 C 676 236, 676 178, 640 152" marker-end="url(#arrow)"/>
-    <text class="t dim" x="606" y="212" style="font-size:16px">revise ≤4</text>
+    <text class="t dim" x="606" y="212">revise ≤4</text>
     <path class="stroke draw" d="M368 264 L 318 264" marker-end="url(#arrow)"/>
     <!-- bottom-left: gate -->
     <text class="t gate" x="70" y="272">
@@ -146,8 +156,8 @@
     </text>
     <!-- retry: gate back to start -->
     <path class="stroke thin draw" d="M160 252 L 160 186" marker-end="url(#arrow)"/>
-    <text class="t dim" x="170" y="228" style="font-size:16px">gate fails →</text>
-    <text class="t dim" x="170" y="246" style="font-size:16px">retry ≤2</text>
+    <text class="t dim" x="170" y="228">gate fails →</text>
+    <text class="t dim" x="170" y="246">retry ≤2</text>
 
     <!-- outputs -->
     <line class="stroke thin" x1="60" y1="358" x2="680" y2="358"/>
@@ -187,7 +197,7 @@
       <tspan x="384" dy="22" class="m">reviewer.md · approve = run the gate</tspan>
     </text>
     <path class="stroke thin draw" d="M640 934 C 676 908, 676 848, 640 822" marker-end="url(#arrow)"/>
-    <text class="t dim" x="606" y="882" style="font-size:16px">revise ≤4</text>
+    <text class="t dim" x="606" y="882">revise ≤4</text>
     <path class="stroke draw" d="M376 926 L 318 904" marker-end="url(#arrow)"/>
     <!-- bottom-left: gate -->
     <text class="t gate" x="70" y="900">
@@ -196,8 +206,8 @@
       <tspan x="70" dy="18" class="m">links · grounded · Lighthouse ≥85</tspan>
     </text>
     <path class="stroke thin draw" d="M160 878 L 160 754" marker-end="url(#arrow)"/>
-    <text class="t dim" x="170" y="800" style="font-size:16px">gate fails →</text>
-    <text class="t dim" x="170" y="818" style="font-size:16px">retry ≤2</text>
+    <text class="t dim" x="170" y="800">gate fails →</text>
+    <text class="t dim" x="170" y="818">retry ≤2</text>
 
     <line class="stroke thin" x1="60" y1="984" x2="680" y2="984"/>
     <text class="m dim" x="66" y="1008">writes into the customer repo</text>
@@ -208,21 +218,21 @@
     <text class="t mid" x="786" y="378">Orchestrator daemon</text>
     <text class="m dim" x="786" y="400">loopctl daemon · 3 s tick · sole writer</text>
     <text class="m" x="786" y="436">system/config/loops.yaml</text>
-    <text class="t dim" x="988" y="436" style="font-size:16px">graph · caps 4 / 2</text>
+    <text class="t dim" x="988" y="436">graph · caps 4 / 2</text>
     <text class="m" x="786" y="462">state/orchestrator.db</text>
-    <text class="t dim" x="988" y="462" style="font-size:16px">events · runs · gates</text>
+    <text class="t dim" x="988" y="462">events · runs · gates</text>
     <text class="m" x="786" y="488">orchestrator.mjs</text>
-    <text class="t dim" x="988" y="488" style="font-size:16px">queue ready loops</text>
+    <text class="t dim" x="988" y="488">queue ready loops</text>
     <text class="m" x="786" y="514">loop_runner.mjs</text>
-    <text class="t dim" x="988" y="514" style="font-size:16px">exec ↔ review ↔ gate</text>
+    <text class="t dim" x="988" y="514">exec ↔ review ↔ gate</text>
     <text class="m" x="786" y="540">failure.mjs</text>
-    <text class="t dim" x="988" y="540" style="font-size:16px">retry · Claude Fable 5</text>
+    <text class="t dim" x="988" y="540">retry · Claude Fable 5</text>
     <text class="m" x="786" y="566">knowledge.mjs</text>
-    <text class="t dim" x="988" y="566" style="font-size:16px">absorb → company/</text>
+    <text class="t dim" x="988" y="566">absorb → company/</text>
     <text class="m" x="786" y="592">deploy.mjs</text>
-    <text class="t dim" x="988" y="592" style="font-size:16px">provision + deploy.sh</text>
+    <text class="t dim" x="988" y="592">provision + deploy.sh</text>
     <text class="m" x="786" y="618">daemon_lock.mjs</text>
-    <text class="t dim" x="988" y="618" style="font-size:16px">one daemon, ever</text>
+    <text class="t dim" x="988" y="618">one daemon, ever</text>
     <line class="stroke thin" x1="780" y1="640" x2="1120" y2="640"/>
     <text class="m dim" x="786" y="664">rulebook  SOP-loop-graph.md</text>
     <text class="m dim" x="786" y="686">ledger    PROGRESS.md</text>
@@ -280,24 +290,24 @@
     <rect class="box" x="1200" y="574" width="370" height="118" rx="16"/>
     <text class="t mid" x="1226" y="612">Dashboard</text>
     <text class="m dim" x="1364" y="612">dashboard/web · read-only</text>
-    <text class="t dim" x="1226" y="642" style="font-size:17px">runs · failures · customers · loop gate</text>
+    <text class="t dim" x="1226" y="642">runs · failures · customers · loop gate</text>
     <text class="m" x="1226" y="668">GET /api/snapshot · SSE /api/events</text>
     <path class="stroke thin draw" d="M1142 690 C 1160 684, 1180 660, 1200 648" marker-end="url(#arrow)" style="opacity:.8"/>
 
     <!-- ================= WHO DOES THE WORK ================= -->
     <rect class="box" x="1200" y="730" width="370" height="330" rx="16"/>
     <text class="t mid" x="1226" y="770">Who does the work</text>
-    <text class="t" x="1226" y="808" style="font-size:20px">Executor · Grok 4.6 via Pi</text>
+    <text class="t" x="1226" y="808">Executor · Grok 4.6 via Pi</text>
     <text class="m dim" x="1226" y="828">pi -p --offline --provider xai</text>
     <text class="m dim" x="1226" y="846">tools allow-listed per loop</text>
-    <text class="t" x="1226" y="878" style="font-size:20px">Reviewer · GPT-5.6 Luna via Pi</text>
+    <text class="t" x="1226" y="878">Reviewer · GPT-5.6 Luna via Pi</text>
     <text class="m dim" x="1226" y="898">run-pi-reviewer.sh --no-tools</text>
     <text class="m dim" x="1226" y="916">also the website designer</text>
-    <text class="t" x="1226" y="948" style="font-size:20px">Orchestrator model · Claude Fable 5</text>
+    <text class="t" x="1226" y="948">Orchestrator model · Claude Fable 5</text>
     <text class="m dim" x="1226" y="968">retry instructions · absorption</text>
-    <text class="t" x="1226" y="1000" style="font-size:20px">Gates · Python, no model</text>
+    <text class="t" x="1226" y="1000">Gates · Python, no model</text>
     <text class="m dim" x="1226" y="1020">research_gate.py · website_gate.py</text>
-    <text class="t dim" x="1226" y="1046" style="font-size:16px">every turn leaves a pi://session/… trace</text>
+    <text class="t dim" x="1226" y="1046">every turn leaves a pi://session/… trace</text>
   </svg>
   </div>
 
